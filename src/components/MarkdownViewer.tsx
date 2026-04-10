@@ -26,7 +26,17 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   // Portal containers: annotationId → DOM element inserted after highlighted paragraph
   const [portalContainers, setPortalContainers] = useState<Map<string, HTMLElement>>(new Map());
 
-  const docAnnotations = annotations.filter((a) => a.documentId === documentId);
+  const docAnnotations = annotations
+    .filter((a) => a.documentId === documentId)
+    .sort((a, b) => {
+      // Sort by position in document content (earlier text first)
+      const posA = content.indexOf(a.selectedText);
+      const posB = content.indexOf(b.selectedText);
+      // If not found in content, put at end
+      const safeA = posA === -1 ? Infinity : posA;
+      const safeB = posB === -1 ? Infinity : posB;
+      return safeA - safeB;
+    });
 
   const handleMouseUp = useCallback(() => {
     requestAnimationFrame(() => {

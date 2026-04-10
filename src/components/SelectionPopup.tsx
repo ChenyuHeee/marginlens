@@ -33,8 +33,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
 
   const handleAskCustom = async () => {
     if (!customQuestion.trim()) return;
-    const prompt = `关于以下内容：\n\n"${selection.text}"\n\n${customQuestion}`;
-    await sendToChat(prompt, selection.text);
+    await sendToChat(customQuestion.trim(), selection.text);
     setCustomQuestion('');
     onClose();
   };

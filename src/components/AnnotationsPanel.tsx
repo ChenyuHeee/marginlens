@@ -78,7 +78,18 @@ function AnnotationCard({ annotation, isActive, onActivate, onUpdate, onRemove }
         borderBottom: '1px solid var(--color-border)',
         background: isActive ? 'var(--color-primary-light)' : 'transparent',
       }}
-      onClick={onActivate}
+      onClick={() => {
+        onActivate();
+        // Scroll to the highlighted text in the viewer
+        const container = document.getElementById('markdown-scroll-container');
+        if (!container) return;
+        const highlight = container.querySelector(`.annotation-highlight[data-annotation-id="${annotation.id}"]`);
+        if (highlight) {
+          highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          highlight.classList.add('active');
+          setTimeout(() => highlight.classList.remove('active'), 2000);
+        }
+      }}
       onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-card-hover)'; }}
       onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
     >

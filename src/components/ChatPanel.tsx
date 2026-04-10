@@ -44,6 +44,21 @@ export function ChatPanel() {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const scrollToHighlight = (text: string) => {
+    const container = document.getElementById('markdown-scroll-container');
+    if (!container) return;
+    // Find the annotation-highlight span or text match in the viewer
+    const highlights = container.querySelectorAll('.annotation-highlight');
+    for (const el of highlights) {
+      if (el.textContent?.includes(text.slice(0, 30))) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('active');
+        setTimeout(() => el.classList.remove('active'), 2000);
+        return;
+      }
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeSession?.messages]);
@@ -209,7 +224,12 @@ export function ChatPanel() {
               }
             >
               {msg.selectedText && msg.role === 'user' && (
-                <div className="mb-1.5 px-2 py-1 rounded-md text-[11px] flex items-start gap-1" style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <div
+                  className="mb-1.5 px-2 py-1 rounded-md text-[11px] flex items-start gap-1 cursor-pointer hover:opacity-80"
+                  style={{ background: 'rgba(255,255,255,0.15)' }}
+                  onClick={(e) => { e.stopPropagation(); scrollToHighlight(msg.selectedText!); }}
+                  title="点击跳转到原文"
+                >
                   <Quote size={9} className="mt-0.5 flex-shrink-0 opacity-70" />
                   <span className="line-clamp-2 opacity-90">{msg.selectedText}</span>
                 </div>
