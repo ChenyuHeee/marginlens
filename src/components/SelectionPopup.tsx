@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquarePlus, Sparkles, ArrowRight } from 'lucide-react';
+import { MessageSquarePlus, Sparkles, ArrowRight, Languages } from 'lucide-react';
 import { useChatStore, useAnnotationStore, useSelectionStore, useSettingsStore, useUIStore, useDocumentStore } from '@/stores';
 import { buildSystemMessage } from '@/lib/context';
 import type { SelectionInfo } from '@/types';
@@ -140,6 +140,75 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
     onClose();
   };
 
+  const [translating, setTranslating] = useState(false);
+
+  const handleTranslate = async () => {
+    const lang = settings.translationLanguage || '中文';
+    const provider = useSettingsStore.getState().getActiveProvider();
+    if (!provider || !provider.apiKey) {
+      alert('请先在设置中配置 API Key');
+      return;
+    }
+
+    // Create annotation immediately with loading state
+    const annotation = await annotationStore.addAnnotation({
+      documentId,
+      selectedText: selection.text,
+      contextBefore: selection.contextBefore,
+      contextAfter: selection.contextAfter,
+      comment: '',
+      llmResponse: '翻译中...',
+      color: '#bfdbfe',
+      positionHint: {
+        paragraphIndex: selection.paragraphIndex,
+        startOffset: selection.startOffset,
+        endOffset: selection.endOffset,
+      },
+    });
+    const annotationId = annotation.id;
+
+    setTranslating(true);
+    selectionStore.setSelection(null);
+
+    const messages = [
+      {
+        role: 'system' as const,
+        content: `你是一个专业的学术翻译助手。请将用户给出的文本准确翻译为${lang}，保持学术用语的准确性和专业性。只输出翻译结果，不要添加任何解释或额外内容。`,
+      },
+      {
+        role: 'user' as const,
+        content: selection.text,
+      },
+    ];
+
+    let fullContent = '';
+    const controller = new AbortController();
+
+    await streamChat(
+      provider,
+      messages,
+      {
+        onToken: (token) => {
+          fullContent += token;
+          annotationStore.updateAnnotation(annotationId, { llmResponse: fullContent });
+        },
+        onDone: () => {
+          annotationStore.updateAnnotation(annotationId, { llmResponse: fullContent });
+          setTranslating(false);
+        },
+        onError: (error) => {
+          annotationStore.updateAnnotation(annotationId, {
+            llmResponse: fullContent + `\n\n⚠️ 翻译出错: ${error.message}`,
+          });
+          setTranslating(false);
+        },
+      },
+      controller.signal,
+    );
+
+    onClose();
+  };
+
   return (
     <div
       className="selection-popup"
@@ -173,6 +242,15 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
           >
             <MessageSquarePlus size={12} />
             批注
+          </button>
+          <button
+            onClick={handleTranslate}
+            disabled={translating}
+            className="mac-btn"
+            style={{ fontSize: 11, padding: '4px 10px' }}
+          >
+            <Languages size={12} />
+            {translating ? '翻译中...' : '翻译'}
           </button>
         </div>
 

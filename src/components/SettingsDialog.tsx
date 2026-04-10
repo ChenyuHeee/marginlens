@@ -290,8 +290,24 @@ function TemplatesSettings() {
 function DisplaySettings() {
   const { settings, updateSettings } = useSettingsStore();
 
+  const languageOptions = ['中文', 'English', '日本語', '한국어', 'Français', 'Deutsch', 'Español'];
+
   return (
     <div className="space-y-6">
+      <div>
+        <label className="text-sm font-medium">翻译目标语言</label>
+        <select
+          value={settings.translationLanguage || '中文'}
+          onChange={(e) => updateSettings({ translationLanguage: e.target.value })}
+          className="w-full mt-2 px-3 py-2 text-sm border rounded-md bg-transparent outline-none focus:ring-1 focus:ring-indigo-500"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          {languageOptions.map((lang) => (
+            <option key={lang} value={lang}>{lang}</option>
+          ))}
+        </select>
+      </div>
+
       <div>
         <label className="text-sm font-medium">主题</label>
         <div className="flex gap-2 mt-2">

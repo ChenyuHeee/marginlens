@@ -98,4 +98,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   promptTemplates: DEFAULT_PROMPT_TEMPLATES,
   fontSize: 16,
   lineHeight: 1.8,
+  translationLanguage: '中文',
 };

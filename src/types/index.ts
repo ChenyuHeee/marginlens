@@ -79,6 +79,7 @@ export interface AppSettings {
   promptTemplates: PromptTemplate[];
   fontSize: number;
   lineHeight: number;
+  translationLanguage: string;
 }
 
 export interface SelectionInfo {
