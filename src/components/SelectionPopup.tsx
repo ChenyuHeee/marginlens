@@ -58,16 +58,18 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
     }
 
     // Build user message with selected text and context embedded
-    let userContent = prompt;
-    if (selectedText && !prompt.includes(selectedText)) {
-      userContent = `用户选中的文本：\n"${selectedText}"\n\n`;
+    let userContent = '';
+    if (selectedText) {
+      userContent += `用户选中的文本：\n"${selectedText}"\n\n`;
       if (selection.contextBefore) {
         userContent += `前文：...${selection.contextBefore.slice(-100)}\n`;
       }
       if (selection.contextAfter) {
         userContent += `后文：${selection.contextAfter.slice(0, 100)}...\n`;
       }
-      userContent += `\n问题：${prompt}`;
+      userContent += `\n${prompt}`;
+    } else {
+      userContent = prompt;
     }
 
     chatStore.addMessage({
