@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
@@ -65,6 +65,15 @@ function AnnotationCard({ annotation, isActive, onActivate, onUpdate, onRemove }
   const [editing, setEditing] = useState(false);
   const [editComment, setEditComment] = useState(annotation.comment);
   const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll and auto-expand when activated externally (e.g. from PDF highlight click)
+  useEffect(() => {
+    if (isActive) {
+      setExpanded(true);
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isActive]);
 
   const handleSave = () => {
     onUpdate({ comment: editComment });
@@ -73,6 +82,7 @@ function AnnotationCard({ annotation, isActive, onActivate, onUpdate, onRemove }
 
   return (
     <div
+      ref={cardRef}
       className="px-3 py-2.5 cursor-pointer transition-colors"
       style={{
         borderBottom: '1px solid var(--color-border)',
