@@ -38,18 +38,21 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   },
 
   addDocument: async (file: File) => {
-    const content = await file.text();
+    const isPdf = !!file.name.match(/\.pdf$/i);
     const id = uuid();
     const now = Date.now();
     const doc: Document = {
       id,
-      title: file.name.replace(/\.(md|markdown)$/i, ''),
-      type: file.name.match(/\.pdf$/i) ? 'pdf' : 'markdown',
-      content,
+      title: file.name.replace(/\.(md|markdown|pdf)$/i, ''),
+      type: isPdf ? 'pdf' : 'markdown',
+      content: isPdf ? '' : await file.text(),
       fileSize: file.size,
       createdAt: now,
       updatedAt: now,
     };
+    if (isPdf) {
+      doc.pdfData = await file.arrayBuffer();
+    }
     await db.saveDocument(doc);
     const documents = await db.getAllDocuments();
     set({ documents });

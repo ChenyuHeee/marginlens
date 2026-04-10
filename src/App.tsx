@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { MarkdownViewer } from '@/components/MarkdownViewer';
+import { PdfViewer } from '@/components/PdfViewer';
 import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ResizableHandle } from '@/components/ResizableHandle';
 import { useDocumentStore, useSettingsStore } from '@/stores';
-import { FileText, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -32,13 +33,7 @@ export default function App() {
               {activeDocument.type === 'markdown' ? (
                 <MarkdownViewer content={activeDocument.content} documentId={activeDocument.id} />
               ) : (
-                <div className="h-full flex items-center justify-center" style={{ color: 'var(--color-text-tertiary)' }}>
-                  <div className="text-center">
-                    <FileText size={40} className="mx-auto mb-3 opacity-20" />
-                    <p className="text-[14px] font-medium">PDF 查看器</p>
-                    <p className="text-[12px] mt-1">即将推出</p>
-                  </div>
-                </div>
+                <PdfViewer document={activeDocument} />
               )}
             </div>
             <ResizableHandle side="right" />
@@ -68,16 +63,17 @@ function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
         <div className="flex flex-col gap-2.5 items-center">
           <label className="mac-btn mac-btn-primary cursor-pointer" style={{ padding: '8px 20px', fontSize: 13, borderRadius: 'var(--radius-md)' }}>
             <Upload size={14} />
-            导入 Markdown 文件
+            导入文件
             <input
               type="file"
-              accept=".md,.markdown"
+              accept=".md,.markdown,.pdf"
               multiple
               onChange={async (e) => {
                 const files = e.target.files;
                 if (!files) return;
                 const { addDocument, openDocument } = useDocumentStore.getState();
                 for (const file of Array.from(files)) {
+                  if (!file.name.match(/\.(md|markdown|pdf)$/i)) continue;
                   const id = await addDocument(file);
                   await openDocument(id);
                 }

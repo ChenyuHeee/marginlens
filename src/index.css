@@ -130,6 +130,43 @@ body {
   border-radius: 2px;
 }
 
+/* ── PDF text layer (transparent overlay for selection) ── */
+.pdf-text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  opacity: 0.3;
+  line-height: 1;
+}
+.pdf-text-layer span {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  cursor: text;
+}
+.pdf-text-layer span::selection {
+  background: rgba(0, 122, 255, 0.35);
+  color: transparent;
+}
+
+/* ── PDF annotation highlights ── */
+.pdf-annotation-highlight {
+  background-color: var(--color-highlight) !important;
+  cursor: pointer !important;
+  border-radius: 1px;
+  transition: background-color 0.15s;
+}
+.pdf-annotation-highlight:hover {
+  background-color: var(--color-highlight-active) !important;
+}
+
+.pdf-page-wrapper {
+  position: relative;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
 /* ── Inline annotation block ── */
 .inline-annotation {
   margin: 0.6em 0;

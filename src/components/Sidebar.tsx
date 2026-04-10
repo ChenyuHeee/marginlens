@@ -25,7 +25,7 @@ export function Sidebar() {
   const handleFileUpload = async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (file.name.match(/\.(md|markdown)$/i)) {
+      if (file.name.match(/\.(md|markdown|pdf)$/i)) {
         const id = await addDocument(file);
         await handleOpenDocument(id);
       }
@@ -118,7 +118,7 @@ export function Sidebar() {
           导入
           <input
             type="file"
-            accept=".md,.markdown"
+            accept=".md,.markdown,.pdf"
             multiple
             onChange={(e) => handleFileUpload(e.target.files)}
             className="hidden"
@@ -139,7 +139,7 @@ export function Sidebar() {
       >
         {filteredDocs.length === 0 ? (
           <div className="text-center py-10 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-            <p>拖拽 .md 文件到此处</p>
+            <p>拖拽 .md / .pdf 文件到此处</p>
           </div>
         ) : (
           <div className="space-y-px">

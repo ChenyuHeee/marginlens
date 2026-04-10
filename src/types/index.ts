@@ -3,6 +3,8 @@ export interface Document {
   title: string;
   type: 'markdown' | 'pdf';
   content: string; // raw markdown text or empty for pdf
+  /** Binary PDF data stored in IndexedDB */
+  pdfData?: ArrayBuffer;
   fileSize: number;
   createdAt: number;
   updatedAt: number;
