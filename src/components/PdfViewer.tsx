@@ -111,8 +111,10 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         // Text layer using pdfjs-dist's built-in TextLayer
         const textLayerDiv = window.document.createElement('div');
         textLayerDiv.className = 'textLayer';
-        // Set the CSS custom property required by pdfjs text layer
-        textLayerDiv.style.setProperty('--total-scale-factor', '1');
+        // Set the CSS custom property required by pdfjs text layer.
+        // setLayerDimensions uses --total-scale-factor * rawPageWidth for
+        // the container size, so it must equal our viewport scale.
+        textLayerDiv.style.setProperty('--total-scale-factor', String(scale));
         container.appendChild(textLayerDiv);
 
         const textContent = await page.getTextContent();
