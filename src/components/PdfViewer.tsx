@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { TextLayer } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { useSelectionStore, useAnnotationStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
@@ -108,32 +107,62 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
         await page.render({ canvas, canvasContext: ctx, viewport }).promise;
 
-        // Text layer using pdfjs-dist's built-in TextLayer
-        const textLayerDiv = window.document.createElement('div');
-        textLayerDiv.className = 'textLayer';
-        // Set the CSS custom property required by pdfjs text layer.
-        textLayerDiv.style.setProperty('--total-scale-factor', String(scale));
-        // Also set --scale-round-x/y to prevent invalid round() expressions
-        textLayerDiv.style.setProperty('--scale-round-x', '1px');
-        textLayerDiv.style.setProperty('--scale-round-y', '1px');
-        container.appendChild(textLayerDiv);
-
+        // Build text layer manually from text content
         const textContent = await page.getTextContent();
-        const textLayer = new TextLayer({
-          textContentSource: textContent,
-          container: textLayerDiv,
-          viewport,
-        });
-        await textLayer.render();
-
-        // Force explicit dimensions to match canvas (override setLayerDimensions)
+        const textLayerDiv = window.document.createElement('div');
+        textLayerDiv.className = 'pdf-text-layer';
+        textLayerDiv.style.position = 'absolute';
+        textLayerDiv.style.left = '0';
+        textLayerDiv.style.top = '0';
         textLayerDiv.style.width = `${viewport.width}px`;
         textLayerDiv.style.height = `${viewport.height}px`;
+        textLayerDiv.style.overflow = 'visible';
+        textLayerDiv.style.lineHeight = '1';
+        container.appendChild(textLayerDiv);
 
-        // Tag spans with page number for selection handling
+        for (const item of textContent.items) {
+          if (!('str' in item) || !item.str) continue;
+          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+          const fontHeight = Math.hypot(tx[2], tx[3]);
+          const angle = Math.atan2(tx[1], tx[0]);
+
+          const span = window.document.createElement('span');
+          span.textContent = item.str;
+          span.dataset.pageNum = String(pageNum);
+          span.style.position = 'absolute';
+          span.style.left = `${tx[4]}px`;
+          span.style.top = `${tx[5] - fontHeight}px`;
+          span.style.fontSize = `${fontHeight}px`;
+          span.style.fontFamily = item.fontName ? `${item.fontName}, sans-serif` : 'sans-serif';
+          span.style.color = 'transparent';
+          span.style.whiteSpace = 'pre';
+          span.style.cursor = 'text';
+          span.style.transformOrigin = '0% 0%';
+          if (angle !== 0) {
+            span.style.transform = `rotate(${angle}rad)`;
+          }
+          // Scale width to match PDF glyph width
+          if (item.width && item.str.length > 0) {
+            span.style.letterSpacing = '0px';
+            const scaledWidth = item.width * viewport.scale;
+            span.dataset.targetWidth = String(scaledWidth);
+          }
+          textLayerDiv.appendChild(span);
+        }
+
+        // Adjust span widths to match PDF layout
         textLayerDiv.querySelectorAll('span').forEach((span) => {
-          (span as HTMLElement).dataset.pageNum = String(pageNum);
+          const targetWidth = Number(span.dataset.targetWidth);
+          if (targetWidth && span.offsetWidth > 0) {
+            const currentWidth = span.getBoundingClientRect().width;
+            if (currentWidth > 0) {
+              span.style.transform = (span.style.transform || '') +
+                ` scaleX(${targetWidth / currentWidth})`;
+            }
+          }
         });
+
+        // Tag spans with page number for selection handling — already done above
 
         // Apply annotation highlights
         applyHighlights(textLayerDiv, pageNum);
@@ -146,7 +175,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
   // Apply annotation highlights to text layer spans
   const applyHighlights = (textLayer: HTMLDivElement, _pageNum: number) => {
-    const spans = textLayer.querySelectorAll('span');
+    const spans = textLayer.querySelectorAll<HTMLSpanElement>('span');
     const fullText = Array.from(spans)
       .map((s) => s.textContent)
       .join('');
@@ -191,7 +220,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   useEffect(() => {
     if (!pdfDoc) return;
     pageRefs.current.forEach((container, pageNum) => {
-      const textLayer = container.querySelector('.textLayer') as HTMLDivElement;
+      const textLayer = container.querySelector('.pdf-text-layer') as HTMLDivElement;
       if (textLayer) {
         // Remove old highlights
         textLayer.querySelectorAll('.pdf-annotation-highlight').forEach((el) => {
@@ -236,7 +265,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       const rect = range.getBoundingClientRect();
 
       // Get context from surrounding text
-      const textLayer = (range.startContainer as Node).parentElement?.closest('.textLayer');
+      const textLayer = (range.startContainer as Node).parentElement?.closest('.pdf-text-layer');
       const fullText = textLayer?.textContent || '';
       const selStart = fullText.indexOf(text);
       const contextBefore = selStart > 0 ? fullText.slice(Math.max(0, selStart - 200), selStart) : '';
