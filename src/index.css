@@ -145,7 +145,7 @@ body {
 .pdf-page-wrapper {
   position: relative;
   border-radius: 2px;
-  overflow: hidden;
+  overflow: clip;
 }
 
 /* ── Inline annotation block ── */
