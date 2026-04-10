@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { TextLayer } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { useSelectionStore, useAnnotationStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
@@ -107,38 +108,23 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
         await page.render({ canvas, canvasContext: ctx, viewport }).promise;
 
-        // Text layer for selection
+        // Text layer using pdfjs-dist's built-in TextLayer
         const textLayerDiv = window.document.createElement('div');
-        textLayerDiv.className = 'pdf-text-layer';
-        textLayerDiv.style.width = `${viewport.width}px`;
-        textLayerDiv.style.height = `${viewport.height}px`;
+        textLayerDiv.className = 'textLayer';
         container.appendChild(textLayerDiv);
 
         const textContent = await page.getTextContent();
+        const textLayer = new TextLayer({
+          textContentSource: textContent,
+          container: textLayerDiv,
+          viewport,
+        });
+        await textLayer.render();
 
-        // Render text spans manually for selection
-        for (const item of textContent.items) {
-          if (!('str' in item) || !item.str) continue;
-          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-          const span = window.document.createElement('span');
-          span.textContent = item.str;
-          span.style.position = 'absolute';
-          span.style.left = `${tx[4]}px`;
-          span.style.top = `${viewport.height - tx[5]}px`;
-          span.style.fontSize = `${Math.hypot(tx[0], tx[1])}px`;
-          span.style.fontFamily = 'sans-serif';
-          span.style.transformOrigin = '0% 0%';
-          // Adjust width to match PDF text
-          if (item.width) {
-            span.style.letterSpacing = '0px';
-            const renderedWidth = span.offsetWidth || item.width * scale;
-            if (renderedWidth > 0) {
-              span.style.transform = `scaleX(${(item.width * scale) / (renderedWidth || 1)})`;
-            }
-          }
-          span.dataset.pageNum = String(pageNum);
-          textLayerDiv.appendChild(span);
-        }
+        // Tag spans with page number for selection handling
+        textLayerDiv.querySelectorAll('span').forEach((span) => {
+          (span as HTMLElement).dataset.pageNum = String(pageNum);
+        });
 
         // Apply annotation highlights
         applyHighlights(textLayerDiv, pageNum);
@@ -196,7 +182,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   useEffect(() => {
     if (!pdfDoc) return;
     pageRefs.current.forEach((container, pageNum) => {
-      const textLayer = container.querySelector('.pdf-text-layer') as HTMLDivElement;
+      const textLayer = container.querySelector('.textLayer') as HTMLDivElement;
       if (textLayer) {
         // Remove old highlights
         textLayer.querySelectorAll('.pdf-annotation-highlight').forEach((el) => {
@@ -241,7 +227,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       const rect = range.getBoundingClientRect();
 
       // Get context from surrounding text
-      const textLayer = (range.startContainer as Node).parentElement?.closest('.pdf-text-layer');
+      const textLayer = (range.startContainer as Node).parentElement?.closest('.textLayer');
       const fullText = textLayer?.textContent || '';
       const selStart = fullText.indexOf(text);
       const contextBefore = selStart > 0 ? fullText.slice(Math.max(0, selStart - 200), selStart) : '';

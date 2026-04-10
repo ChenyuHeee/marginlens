@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "pdfjs-dist/web/pdf_viewer.css";
 
 :root {
   --color-primary: #007aff;
@@ -128,26 +129,6 @@ body {
   background-color: var(--color-highlight-active);
   box-shadow: 0 0 0 2px var(--color-primary);
   border-radius: 2px;
-}
-
-/* ── PDF text layer (transparent overlay for selection) ── */
-.pdf-text-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  overflow: hidden;
-  opacity: 0.3;
-  line-height: 1;
-}
-.pdf-text-layer span {
-  position: absolute;
-  white-space: pre;
-  color: transparent;
-  cursor: text;
-}
-.pdf-text-layer span::selection {
-  background: rgba(0, 122, 255, 0.35);
-  color: transparent;
 }
 
 /* ── PDF annotation highlights ── */
