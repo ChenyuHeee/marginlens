@@ -112,9 +112,10 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         const textLayerDiv = window.document.createElement('div');
         textLayerDiv.className = 'textLayer';
         // Set the CSS custom property required by pdfjs text layer.
-        // setLayerDimensions uses --total-scale-factor * rawPageWidth for
-        // the container size, so it must equal our viewport scale.
         textLayerDiv.style.setProperty('--total-scale-factor', String(scale));
+        // Also set --scale-round-x/y to prevent invalid round() expressions
+        textLayerDiv.style.setProperty('--scale-round-x', '1px');
+        textLayerDiv.style.setProperty('--scale-round-y', '1px');
         container.appendChild(textLayerDiv);
 
         const textContent = await page.getTextContent();
@@ -124,6 +125,10 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           viewport,
         });
         await textLayer.render();
+
+        // Force explicit dimensions to match canvas (override setLayerDimensions)
+        textLayerDiv.style.width = `${viewport.width}px`;
+        textLayerDiv.style.height = `${viewport.height}px`;
 
         // Tag spans with page number for selection handling
         textLayerDiv.querySelectorAll('span').forEach((span) => {
