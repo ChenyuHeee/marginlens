@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight, MessageSquare, Sparkles } from 'lucide-react';
-import { useAnnotationStore, useSelectionStore, useSettingsStore, useChatStore, useDocumentStore, useUIStore } from '@/stores';
+import { useAnnotationStore, useSelectionStore, useSettingsStore, useDocumentStore } from '@/stores';
 import { buildSystemMessage } from '@/lib/context';
 import { streamChat } from '@/lib/llm';
 import type { Annotation, SelectionInfo } from '@/types';

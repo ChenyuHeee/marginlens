@@ -37,7 +37,7 @@ export function ChatPanel() {
     saveActiveSession,
   } = useChatStore();
   const { activeDocument } = useDocumentStore();
-  const { getActiveProvider, settings } = useSettingsStore();
+  const { getActiveProvider } = useSettingsStore();
   const { addAnnotation } = useAnnotationStore();
   const { setRightPanelTab } = useUIStore();
 

@@ -8,7 +8,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import rehypeSlug from 'rehype-slug';
 import { useSelectionStore, useAnnotationStore, useSettingsStore } from '@/stores';
-import type { SelectionInfo, Annotation } from '@/types';
+import type { SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { InlineAnnotation } from './InlineAnnotation';
 
@@ -109,13 +109,13 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
       highlightText(containerRef.current, annotation.selectedText, annotation.id);
 
       // Find the highlight span we just inserted
-      const highlightSpan = containerRef.current.querySelector(
+      const highlightSpan: Element | null = containerRef.current.querySelector(
         `.annotation-highlight[data-annotation-id="${CSS.escape(annotation.id)}"]`
       );
 
       if (highlightSpan) {
         // Walk up to the nearest block-level parent
-        let blockParent = highlightSpan.parentElement;
+        let blockParent: Element | null = highlightSpan.parentElement;
         while (blockParent && blockParent !== containerRef.current) {
           const display = window.getComputedStyle(blockParent).display;
           if (display === 'block' || display === 'list-item' || blockParent.parentElement === containerRef.current) {

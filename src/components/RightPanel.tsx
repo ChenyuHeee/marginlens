@@ -1,5 +1,5 @@
 import { MessageSquare, BookOpen, Settings, Sun, Moon } from 'lucide-react';
-import { useUIStore, useSettingsStore, useDocumentStore } from '@/stores';
+import { useUIStore, useSettingsStore } from '@/stores';
 import { ChatPanel } from './ChatPanel';
 import { AnnotationsPanel } from './AnnotationsPanel';
 

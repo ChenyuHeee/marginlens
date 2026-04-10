@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAnnotationStore, useDocumentStore } from '@/stores';
 
 export function AnnotationsPanel() {

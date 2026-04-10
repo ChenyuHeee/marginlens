@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquarePlus, Sparkles, Send, ArrowRight } from 'lucide-react';
+import { MessageSquarePlus, Sparkles, ArrowRight } from 'lucide-react';
 import { useChatStore, useAnnotationStore, useSelectionStore, useSettingsStore, useUIStore, useDocumentStore } from '@/stores';
 import { buildSystemMessage } from '@/lib/context';
 import type { SelectionInfo } from '@/types';

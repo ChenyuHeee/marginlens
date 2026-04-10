@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, Check } from 'lucide-react';
+import { X, Plus, Trash2 } from 'lucide-react';
 import { useSettingsStore } from '@/stores';
 import type { LLMProvider, PromptTemplate } from '@/types';
 import { v4 as uuid } from 'uuid';
@@ -10,7 +10,6 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
-  const { settings, updateSettings, updateProvider } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<'providers' | 'templates' | 'display'>('providers');
 
   if (!open) return null;
