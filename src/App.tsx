@@ -4,6 +4,7 @@ import { MarkdownPanel } from '@/components/MarkdownPanel';
 import { PdfViewer } from '@/components/PdfViewer';
 import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
 import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore } from '@/stores';
 import { Upload } from 'lucide-react';
@@ -45,6 +46,7 @@ export default function App() {
       </div>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ApiKeyAlert />
     </div>
   );
 }

@@ -88,10 +88,7 @@ export function ChatPanel() {
 
     const provider = getActiveProvider();
     if (!provider || !provider.apiKey) {
-      addMessage({
-        role: 'assistant',
-        content: '⚠️ 请先在设置中配置 API Key。',
-      });
+      useUIStore.getState().setShowApiKeyAlert(true);
       return;
     }
 

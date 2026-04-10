@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight, MessageSquare, Sparkles } from 'lucide-react';
-import { useAnnotationStore, useSelectionStore, useSettingsStore, useDocumentStore } from '@/stores';
+import { useAnnotationStore, useSelectionStore, useSettingsStore, useDocumentStore, useUIStore } from '@/stores';
 import { buildSystemMessage } from '@/lib/context';
 import { streamChat } from '@/lib/llm';
 import type { Annotation, SelectionInfo } from '@/types';
@@ -81,7 +81,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
     if (!inlineQuestion.trim() || inlineStreaming) return;
     const provider = useSettingsStore.getState().getActiveProvider();
     if (!provider?.apiKey) {
-      setInlineAnswer('⚠️ 请先在设置中配置 API Key。');
+      useUIStore.getState().setShowApiKeyAlert(true);
       return;
     }
 

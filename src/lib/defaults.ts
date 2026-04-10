@@ -93,7 +93,7 @@ export const DEFAULT_PROVIDERS: LLMProvider[] = [
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
-  activeProviderId: 'openai',
+  activeProviderId: 'deepseek',
   providers: DEFAULT_PROVIDERS,
   promptTemplates: DEFAULT_PROMPT_TEMPLATES,
   fontSize: 16,

@@ -406,16 +406,20 @@ interface UIStore {
   sidebarOpen: boolean;
   rightPanelTab: 'chat' | 'annotations' | 'translate';
   rightPanelWidth: number;
+  showApiKeyAlert: boolean;
   toggleSidebar: () => void;
   setRightPanelTab: (tab: 'chat' | 'annotations' | 'translate') => void;
   setRightPanelWidth: (width: number) => void;
+  setShowApiKeyAlert: (show: boolean) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
   sidebarOpen: true,
   rightPanelTab: 'chat',
   rightPanelWidth: 420,
+  showApiKeyAlert: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
   setRightPanelWidth: (width) => set({ rightPanelWidth: Math.max(300, Math.min(800, width)) }),
+  setShowApiKeyAlert: (show) => set({ showApiKeyAlert: show }),
 }));

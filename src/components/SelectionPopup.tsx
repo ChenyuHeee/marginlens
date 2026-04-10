@@ -78,10 +78,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
 
     const provider = useSettingsStore.getState().getActiveProvider();
     if (!provider || !provider.apiKey) {
-      chatStore.addMessage({
-        role: 'assistant',
-        content: '⚠️ 请先在设置中配置 API Key。',
-      });
+      useUIStore.getState().setShowApiKeyAlert(true);
       return;
     }
 
@@ -144,7 +141,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
     const lang = settings.translationLanguage || '中文';
     const provider = useSettingsStore.getState().getActiveProvider();
     if (!provider || !provider.apiKey) {
-      alert('请先在设置中配置 API Key');
+      useUIStore.getState().setShowApiKeyAlert(true);
       return;
     }
 

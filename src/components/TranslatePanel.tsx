@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useSelectionStore, useSettingsStore } from '@/stores';
+import { useSelectionStore, useSettingsStore, useUIStore } from '@/stores';
 import { streamChat } from '@/lib/llm';
 import { Languages, Loader2 } from 'lucide-react';
 
@@ -19,7 +19,7 @@ export function TranslatePanel() {
 
     const provider = useSettingsStore.getState().getActiveProvider();
     if (!provider || !provider.apiKey) {
-      setTranslation('⚠️ 请先在设置中配置 API Key');
+      useUIStore.getState().setShowApiKeyAlert(true);
       return;
     }
 
