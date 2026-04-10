@@ -71,7 +71,10 @@ function AnnotationCard({ annotation, isActive, onActivate, onUpdate, onRemove }
   useEffect(() => {
     if (isActive) {
       setExpanded(true);
-      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Delay scroll to ensure DOM is laid out after tab switch
+      setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
     }
   }, [isActive]);
 

@@ -331,25 +331,20 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     return () => window.document.removeEventListener('mousedown', handleMouseDown);
   }, [setSelection]);
 
-  // Handle annotation highlight click
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.pdf-annotation-highlight');
-      if (!target) return;
-      const annId = (target as HTMLElement).dataset.annotationId;
-      if (annId) {
-        e.stopPropagation();
-        const { setActiveAnnotation } = useAnnotationStore.getState();
-        setActiveAnnotation(annId);
-        // Switch to annotations tab in right panel
-        useUIStore.getState().setRightPanelTab('annotations');
-      }
-    };
-    containerRef.current.addEventListener('click', handleClick);
-    const ref = containerRef.current;
-    return () => ref.removeEventListener('click', handleClick);
-  }, []);
+  const handleHighlightClick = useCallback((e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest('.pdf-annotation-highlight');
+    if (!target) return;
+    const annId = (target as HTMLElement).dataset.annotationId;
+    if (annId) {
+      e.stopPropagation();
+      // Clear any text selection to prevent popup
+      window.getSelection()?.removeAllRanges();
+      setPopupSelection(null);
+      setSelection(null);
+      useAnnotationStore.getState().setActiveAnnotation(annId);
+      useUIStore.getState().setRightPanelTab('annotations');
+    }
+  }, [setSelection]);
 
   const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 4));
   const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
@@ -432,6 +427,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         id="pdf-scroll-container"
         style={{ background: 'var(--color-bg-tertiary)' }}
         onMouseUp={handleMouseUp}
+        onClick={handleHighlightClick}
       >
         <div className="flex flex-col items-center py-4 gap-3">
           {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
