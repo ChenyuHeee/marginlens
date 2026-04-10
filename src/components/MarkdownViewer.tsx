@@ -12,6 +12,12 @@ import type { SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { InlineAnnotation } from './InlineAnnotation';
 
+/** Scroll to and expand the inline annotation for a given annotation ID */
+function activateAnnotationHighlight(annotationId: string) {
+  const { setActiveAnnotation } = useAnnotationStore.getState();
+  setActiveAnnotation(annotationId);
+}
+
 interface MarkdownViewerProps {
   content: string;
   documentId: string;
@@ -95,6 +101,23 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
     document.addEventListener('mousedown', handleMouseDown);
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, [setSelection]);
+
+  // Handle clicks on annotation highlights → activate corresponding annotation
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const handleHighlightClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('.annotation-highlight');
+      if (!target) return;
+      const annId = (target as HTMLElement).dataset.annotationId;
+      if (annId) {
+        e.stopPropagation();
+        activateAnnotationHighlight(annId);
+      }
+    };
+    containerRef.current.addEventListener('click', handleHighlightClick);
+    const ref = containerRef.current;
+    return () => ref.removeEventListener('click', handleHighlightClick);
+  }, []);
 
   // Apply annotation highlights AND insert portal containers after highlighted paragraphs
   useEffect(() => {

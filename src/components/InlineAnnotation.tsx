@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -25,7 +25,19 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
   const [inlineAnswer, setInlineAnswer] = useState('');
   const [inlineStreaming, setInlineStreaming] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const isActive = activeAnnotationId === annotation.id;
+
+  // Auto-expand and scroll into view when activated externally (e.g. clicking highlight)
+  useEffect(() => {
+    if (isActive) {
+      setCollapsed(false);
+      // Scroll the annotation block into view
+      requestAnimationFrame(() => {
+        rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }, [isActive]);
 
   // Determine header title: prefer user question (from comment "Q: ..."), otherwise show selected text
   const headerTitle = annotation.comment?.startsWith('Q: ')
@@ -123,6 +135,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
 
   return (
     <div
+      ref={rootRef}
       className={`inline-annotation ${isActive ? 'ring-2 ring-[var(--color-primary)]/40' : ''}`}
       data-annotation-block={annotation.id}
     >
