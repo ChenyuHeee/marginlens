@@ -100,6 +100,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         canvas.height = Math.floor(viewport.height * window.devicePixelRatio);
         canvas.style.width = `${viewport.width}px`;
         canvas.style.height = `${viewport.height}px`;
+        canvas.style.display = 'block';
+        canvas.style.pointerEvents = 'none';
         container.appendChild(canvas);
 
         const ctx = canvas.getContext('2d')!;
