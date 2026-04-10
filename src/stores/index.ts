@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Document, Annotation, ChatSession, ChatMessage, AppSettings, SelectionInfo } from '@/types';
 import * as db from '@/lib/db';
 import { DEFAULT_SETTINGS } from '@/lib/defaults';
+import { parseAnnotationsFromMarkdown } from '@/lib/annotations';
 import { v4 as uuid } from 'uuid';
 
 // ─── Document Store ───
@@ -15,6 +16,7 @@ interface DocumentStore {
   addDocument: (file: File) => Promise<string>;
   addDocumentFromText: (title: string, content: string) => Promise<string>;
   removeDocument: (id: string) => Promise<void>;
+  updateDocumentContent: (id: string, content: string) => Promise<void>;
   closeDocument: () => void;
 }
 
@@ -41,11 +43,21 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     const isPdf = !!file.name.match(/\.pdf$/i);
     const id = uuid();
     const now = Date.now();
+
+    let content = '';
+    let embeddedAnnotations: ReturnType<typeof parseAnnotationsFromMarkdown>['annotations'] = [];
+    if (!isPdf) {
+      const raw = await file.text();
+      const parsed = parseAnnotationsFromMarkdown(raw);
+      content = parsed.content;
+      embeddedAnnotations = parsed.annotations;
+    }
+
     const doc: Document = {
       id,
       title: file.name.replace(/\.(md|markdown|pdf)$/i, ''),
       type: isPdf ? 'pdf' : 'markdown',
-      content: isPdf ? '' : await file.text(),
+      content,
       fileSize: file.size,
       createdAt: now,
       updatedAt: now,
@@ -54,6 +66,24 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       doc.pdfData = await file.arrayBuffer();
     }
     await db.saveDocument(doc);
+
+    // Import embedded annotations
+    for (const ann of embeddedAnnotations) {
+      const annotation: Annotation = {
+        id: uuid(),
+        documentId: id,
+        selectedText: ann.selectedText,
+        contextBefore: '',
+        contextAfter: '',
+        comment: ann.comment,
+        llmResponse: ann.llmResponse,
+        color: ann.color || '#fef08a',
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.saveAnnotation(annotation);
+    }
+
     const documents = await db.getAllDocuments();
     set({ documents });
     return id;
@@ -86,6 +116,19 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     } else {
       set({ documents });
     }
+  },
+
+  updateDocumentContent: async (id: string, content: string) => {
+    const doc = await db.getDocument(id);
+    if (!doc) return;
+    const updated = { ...doc, content, fileSize: new Blob([content]).size, updatedAt: Date.now() };
+    await db.saveDocument(updated);
+    const { activeDocumentId } = get();
+    if (activeDocumentId === id) {
+      set({ activeDocument: updated });
+    }
+    const documents = await db.getAllDocuments();
+    set({ documents });
   },
 
   closeDocument: () => {
@@ -176,9 +219,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadSessions: async (documentId: string) => {
     const sessions = await db.getChatSessionsByDocument(documentId);
     set({ sessions });
-    // Auto-select last session or create one
+    // Auto-select last session or clear
     if (sessions.length > 0) {
       set({ activeSessionId: sessions[0].id, activeSession: sessions[0] });
+    } else {
+      set({ activeSessionId: null, activeSession: null });
     }
   },
 

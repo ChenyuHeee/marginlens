@@ -1,0 +1,180 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Eye, Edit3, Download, Save } from 'lucide-react';
+import { MarkdownViewer } from './MarkdownViewer';
+import { useDocumentStore, useAnnotationStore } from '@/stores';
+import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
+
+interface MarkdownPanelProps {
+  content: string;
+  documentId: string;
+}
+
+export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
+  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
+  const [editContent, setEditContent] = useState(content);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { updateDocumentContent } = useDocumentStore();
+  const { annotations } = useAnnotationStore();
+  const [dirty, setDirty] = useState(false);
+
+  // Sync editContent when content changes externally (e.g. switching documents)
+  useEffect(() => {
+    setEditContent(content);
+    setDirty(false);
+  }, [content, documentId]);
+
+  // Auto-focus textarea when entering edit mode
+  useEffect(() => {
+    if (mode === 'edit' && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [mode]);
+
+  const handleSave = useCallback(async () => {
+    await updateDocumentContent(documentId, editContent);
+    setDirty(false);
+  }, [documentId, editContent, updateDocumentContent]);
+
+  const handleExport = () => {
+    const docAnnotations = annotations.filter((a) => a.documentId === documentId);
+    const contentWithAnnotations = serializeAnnotationsToMarkdown(editContent, docAnnotations);
+
+    const doc = useDocumentStore.getState().activeDocument;
+    const filename = (doc?.title || 'document') + '.md';
+    const blob = new Blob([contentWithAnnotations], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Keyboard shortcut: Cmd/Ctrl+S to save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (mode === 'edit' && dirty) {
+          handleSave();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [mode, dirty, handleSave]);
+
+  return (
+    <div className="relative h-full flex flex-col">
+      {/* Toolbar */}
+      <div
+        className="flex items-center justify-between px-4 h-10 flex-shrink-0"
+        style={{
+          borderBottom: '1px solid var(--color-border)',
+          background: 'var(--color-bg-secondary)',
+        }}
+      >
+        <div className="flex items-center gap-1">
+          <button
+            onClick={async () => {
+              if (mode === 'edit' && dirty) await handleSave();
+              setMode('preview');
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+              mode === 'preview' ? '' : ''
+            }`}
+            style={{
+              background: mode === 'preview' ? 'var(--color-primary-light)' : 'transparent',
+              color: mode === 'preview' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            }}
+            onMouseEnter={(e) => { if (mode !== 'preview') e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+            onMouseLeave={(e) => { if (mode !== 'preview') e.currentTarget.style.background = 'transparent'; }}
+          >
+            <Eye size={12} />
+            预览
+          </button>
+          <button
+            onClick={() => setMode('edit')}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors"
+            style={{
+              background: mode === 'edit' ? 'var(--color-primary-light)' : 'transparent',
+              color: mode === 'edit' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            }}
+            onMouseEnter={(e) => { if (mode !== 'edit') e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+            onMouseLeave={(e) => { if (mode !== 'edit') e.currentTarget.style.background = 'transparent'; }}
+          >
+            <Edit3 size={12} />
+            编辑
+            {dirty && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {mode === 'edit' && dirty && (
+            <button
+              onClick={handleSave}
+              className="mac-btn flex items-center gap-1"
+              style={{ fontSize: 11, padding: '3px 10px' }}
+            >
+              <Save size={11} />
+              保存
+            </button>
+          )}
+          <button
+            onClick={handleExport}
+            className="mac-btn flex items-center gap-1"
+            style={{ fontSize: 11, padding: '3px 10px' }}
+            title="导出 Markdown（含批注）"
+          >
+            <Download size={11} />
+            导出
+          </button>
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex-1 min-h-0">
+        {mode === 'preview' ? (
+          <MarkdownViewer content={content} documentId={documentId} />
+        ) : (
+          <div className="h-full overflow-auto px-4 py-4 lg:px-10">
+            <textarea
+              ref={textareaRef}
+              value={editContent}
+              onChange={(e) => {
+                setEditContent(e.target.value);
+                setDirty(true);
+              }}
+              className="w-full h-full min-h-[calc(100vh-120px)] resize-none outline-none"
+              style={{
+                fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: 'var(--color-text)',
+                background: 'transparent',
+                tabSize: 2,
+              }}
+              spellCheck={false}
+              onKeyDown={(e) => {
+                // Tab key inserts 2 spaces
+                if (e.key === 'Tab') {
+                  e.preventDefault();
+                  const start = e.currentTarget.selectionStart;
+                  const end = e.currentTarget.selectionEnd;
+                  const value = e.currentTarget.value;
+                  setEditContent(value.substring(0, start) + '  ' + value.substring(end));
+                  setDirty(true);
+                  requestAnimationFrame(() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 2;
+                    }
+                  });
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
-import { MarkdownViewer } from '@/components/MarkdownViewer';
+import { MarkdownPanel } from '@/components/MarkdownPanel';
 import { PdfViewer } from '@/components/PdfViewer';
 import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ResizableHandle } from '@/components/ResizableHandle';
-import { useDocumentStore, useSettingsStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore } from '@/stores';
 import { Upload } from 'lucide-react';
 
 export default function App() {
@@ -31,7 +31,7 @@ export default function App() {
           <>
             <div className="flex-1 min-w-0 h-full overflow-hidden">
               {activeDocument.type === 'markdown' ? (
-                <MarkdownViewer content={activeDocument.content} documentId={activeDocument.id} />
+                <MarkdownPanel content={activeDocument.content} documentId={activeDocument.id} />
               ) : (
                 <PdfViewer document={activeDocument} />
               )}
@@ -76,6 +76,8 @@ function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
                   if (!file.name.match(/\.(md|markdown|pdf)$/i)) continue;
                   const id = await addDocument(file);
                   await openDocument(id);
+                  await useAnnotationStore.getState().loadAnnotations(id);
+                  await useChatStore.getState().loadSessions(id);
                 }
               }}
               className="hidden"
