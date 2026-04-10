@@ -66,8 +66,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
             const p = await pdf.getPage(i);
             const tc = await p.getTextContent();
             const pageText = tc.items
-              .filter((it): it is { str: string } => 'str' in it)
-              .map((it) => it.str)
+              .filter((it) => 'str' in it && it.str)
+              .map((it) => ('str' in it ? it.str : ''))
               .join('');
             pages.push(pageText);
           }
