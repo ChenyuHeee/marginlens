@@ -104,7 +104,7 @@ export function ChatPanel() {
 
     const apiMessages = currentSession.messages.slice(0, -1).map((m) => ({
       role: m.role,
-      content: m.content,
+      content: m.hiddenContext ? m.hiddenContext + '\n' + m.content : m.content,
     }));
 
     let fullContent = '';

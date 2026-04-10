@@ -57,24 +57,22 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       });
     }
 
-    // Build user message with selected text and context embedded
-    let userContent = '';
+    // Build hidden context for LLM (not displayed to user)
+    let hiddenContext = '';
     if (selectedText) {
-      userContent += `用户选中的文本：\n"${selectedText}"\n\n`;
+      hiddenContext += `用户选中的文本：\n"${selectedText}"\n\n`;
       if (selection.contextBefore) {
-        userContent += `前文：...${selection.contextBefore.slice(-100)}\n`;
+        hiddenContext += `前文：...${selection.contextBefore.slice(-100)}\n`;
       }
       if (selection.contextAfter) {
-        userContent += `后文：${selection.contextAfter.slice(0, 100)}...\n`;
+        hiddenContext += `后文：${selection.contextAfter.slice(0, 100)}...\n`;
       }
-      userContent += `\n${prompt}`;
-    } else {
-      userContent = prompt;
     }
 
     chatStore.addMessage({
       role: 'user',
-      content: userContent,
+      content: prompt,
+      hiddenContext: hiddenContext || undefined,
       selectedText,
     });
 
@@ -96,7 +94,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
 
     const apiMessages = session2.messages.slice(0, -1).map((m) => ({
       role: m.role,
-      content: m.content,
+      content: m.hiddenContext ? m.hiddenContext + '\n' + m.content : m.content,
     }));
 
     let fullContent = '';

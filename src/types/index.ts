@@ -37,6 +37,8 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /** Hidden context prepended to content when sent to LLM (not displayed) */
+  hiddenContext?: string;
   /** The selected text that triggered this message */
   selectedText?: string;
   timestamp: number;
