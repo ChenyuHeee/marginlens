@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { useSelectionStore, useAnnotationStore, useDocumentStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
+import { InlineAnnotation } from './InlineAnnotation';
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
 
 // Configure worker
@@ -33,6 +34,18 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   const [popupSelection, setPopupSelection] = useState<SelectionInfo | null>(null);
 
   const docAnnotations = annotations.filter((a) => a.documentId === doc.id);
+
+  // Group annotations by page number for rendering between pages
+  const annotationsByPage = useMemo(() => {
+    const map = new Map<number, typeof docAnnotations>();
+    for (const ann of docAnnotations) {
+      const page = ann.positionHint?.paragraphIndex || 1;
+      const arr = map.get(page) || [];
+      arr.push(ann);
+      map.set(page, arr);
+    }
+    return map;
+  }, [docAnnotations]);
 
   // Load PDF document
   useEffect(() => {
@@ -433,16 +446,23 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       >
         <div className="flex flex-col items-center py-4 gap-3">
           {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-            <div
-              key={pageNum}
-              data-page={pageNum}
-              className="pdf-page-wrapper relative shadow-md"
-              style={{ background: '#fff' }}
-              ref={(el) => {
-                if (el) pageRefs.current.set(pageNum, el);
-              }}
-            >
-              {/* Canvas + text layer will be rendered here */}
+            <div key={pageNum} className="flex flex-col items-center gap-3" style={{ width: 'fit-content' }}>
+              <div
+                data-page={pageNum}
+                className="pdf-page-wrapper relative shadow-md"
+                style={{ background: '#fff' }}
+                ref={(el) => {
+                  if (el) pageRefs.current.set(pageNum, el);
+                }}
+              >
+                {/* Canvas + text layer will be rendered here */}
+              </div>
+              {/* Annotations for this page */}
+              {annotationsByPage.get(pageNum)?.map((ann) => (
+                <div key={ann.id} className="w-full max-w-[700px]">
+                  <InlineAnnotation annotation={ann} documentId={doc.id} />
+                </div>
+              ))}
             </div>
           ))}
         </div>
