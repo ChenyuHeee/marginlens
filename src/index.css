@@ -2,11 +2,15 @@
 
 /* ── PDF manual text layer ── */
 .pdf-text-layer {
-  z-index: 2;
+  z-index: 1;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .pdf-text-layer span {
   pointer-events: all;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .pdf-text-layer span::selection {

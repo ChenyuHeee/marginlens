@@ -101,6 +101,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         canvas.style.width = `${viewport.width}px`;
         canvas.style.height = `${viewport.height}px`;
         canvas.style.display = 'block';
+        canvas.style.position = 'relative';
+        canvas.style.zIndex = '0';
         canvas.style.pointerEvents = 'none';
         container.appendChild(canvas);
 
@@ -111,26 +113,16 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
         // Build text layer manually from text content
         const textContent = await page.getTextContent();
-        console.log('[PDF Debug] textContent items:', textContent.items.length);
-        if (textContent.items.length > 0) {
-          const first = textContent.items[0];
-          console.log('[PDF Debug] first item:', JSON.stringify(first));
-          if ('str' in first) {
-            const tx = pdfjsLib.Util.transform(viewport.transform, first.transform);
-            console.log('[PDF Debug] viewport.transform:', viewport.transform);
-            console.log('[PDF Debug] tx:', tx);
-            console.log('[PDF Debug] fontHeight:', Math.hypot(tx[2], tx[3]));
-          }
-        }
         const textLayerDiv = window.document.createElement('div');
         textLayerDiv.className = 'pdf-text-layer';
         textLayerDiv.style.position = 'absolute';
         textLayerDiv.style.left = '0';
         textLayerDiv.style.top = '0';
-        textLayerDiv.style.width = `${viewport.width}px`;
-        textLayerDiv.style.height = `${viewport.height}px`;
+        textLayerDiv.style.right = '0';
+        textLayerDiv.style.bottom = '0';
         textLayerDiv.style.overflow = 'visible';
         textLayerDiv.style.lineHeight = '1';
+        textLayerDiv.style.zIndex = '1';
         container.appendChild(textLayerDiv);
 
         for (const item of textContent.items) {
@@ -147,11 +139,13 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           span.style.top = `${tx[5] - fontHeight}px`;
           span.style.fontSize = `${fontHeight}px`;
           span.style.fontFamily = 'sans-serif';
-          span.style.color = 'rgba(255, 0, 0, 0.4)';
+          span.style.color = 'transparent';
           span.style.whiteSpace = 'pre';
           span.style.cursor = 'text';
           span.style.transformOrigin = '0% 0%';
           span.style.lineHeight = '1';
+          span.style.webkitUserSelect = 'text';
+          span.style.userSelect = 'text';
           if (angle !== 0) {
             span.style.transform = `rotate(${angle}rad)`;
           }
