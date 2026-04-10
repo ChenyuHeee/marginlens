@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
-import { useSelectionStore, useAnnotationStore } from '@/stores';
+import { useSelectionStore, useAnnotationStore, useDocumentStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
@@ -58,6 +58,22 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         setNumPages(pdf.numPages);
         setCurrentPage(1);
         setLoading(false);
+
+        // Extract full text for LLM context if not already done
+        if (!doc.extractedText) {
+          const pages: string[] = [];
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const p = await pdf.getPage(i);
+            const tc = await p.getTextContent();
+            const pageText = tc.items
+              .filter((it): it is { str: string } => 'str' in it)
+              .map((it) => it.str)
+              .join('');
+            pages.push(pageText);
+          }
+          const fullText = pages.join('\n\n');
+          useDocumentStore.getState().updateDocument(doc.id, { extractedText: fullText });
+        }
       } catch (err) {
         if (!cancelled) {
           setError(`加载 PDF 失败: ${err instanceof Error ? err.message : '未知错误'}`);

@@ -50,15 +50,29 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
     const activeDoc = useDocumentStore.getState().activeDocument;
     const allAnnotations = useAnnotationStore.getState().annotations.filter(a => a.documentId === documentId);
     if (activeDoc && session.messages.length === 0) {
+      const docText = activeDoc.content || activeDoc.extractedText || '';
       chatStore.addMessage({
         role: 'system',
-        content: buildSystemMessage(activeDoc.content, allAnnotations),
+        content: buildSystemMessage(docText, allAnnotations),
       });
+    }
+
+    // Build user message with selected text and context embedded
+    let userContent = prompt;
+    if (selectedText && !prompt.includes(selectedText)) {
+      userContent = `用户选中的文本：\n"${selectedText}"\n\n`;
+      if (selection.contextBefore) {
+        userContent += `前文：...${selection.contextBefore.slice(-100)}\n`;
+      }
+      if (selection.contextAfter) {
+        userContent += `后文：${selection.contextAfter.slice(0, 100)}...\n`;
+      }
+      userContent += `\n问题：${prompt}`;
     }
 
     chatStore.addMessage({
       role: 'user',
-      content: prompt,
+      content: userContent,
       selectedText,
     });
 

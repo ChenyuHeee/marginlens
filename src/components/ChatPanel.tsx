@@ -77,9 +77,10 @@ export function ChatPanel() {
     // Inject document context + annotations as system message on first user message
     const allAnnotations = useAnnotationStore.getState().annotations.filter(a => a.documentId === activeDocument.id);
     if (session.messages.length === 0) {
+      const docText = activeDocument.content || activeDocument.extractedText || '';
       addMessage({
         role: 'system',
-        content: buildSystemMessage(activeDocument.content, allAnnotations),
+        content: buildSystemMessage(docText, allAnnotations),
       });
     }
 

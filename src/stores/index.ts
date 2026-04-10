@@ -17,6 +17,7 @@ interface DocumentStore {
   addDocumentFromText: (title: string, content: string) => Promise<string>;
   removeDocument: (id: string) => Promise<void>;
   updateDocumentContent: (id: string, content: string) => Promise<void>;
+  updateDocument: (id: string, updates: Partial<Document>) => Promise<void>;
   closeDocument: () => void;
 }
 
@@ -122,6 +123,19 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     const doc = await db.getDocument(id);
     if (!doc) return;
     const updated = { ...doc, content, fileSize: new Blob([content]).size, updatedAt: Date.now() };
+    await db.saveDocument(updated);
+    const { activeDocumentId } = get();
+    if (activeDocumentId === id) {
+      set({ activeDocument: updated });
+    }
+    const documents = await db.getAllDocuments();
+    set({ documents });
+  },
+
+  updateDocument: async (id: string, updates: Partial<Document>) => {
+    const doc = await db.getDocument(id);
+    if (!doc) return;
+    const updated = { ...doc, ...updates, updatedAt: Date.now() };
     await db.saveDocument(updated);
     const { activeDocumentId } = get();
     if (activeDocumentId === id) {

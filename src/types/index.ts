@@ -5,6 +5,8 @@ export interface Document {
   content: string; // raw markdown text or empty for pdf
   /** Binary PDF data stored in IndexedDB */
   pdfData?: ArrayBuffer;
+  /** Extracted plain text from PDF for LLM context */
+  extractedText?: string;
   fileSize: number;
   createdAt: number;
   updatedAt: number;

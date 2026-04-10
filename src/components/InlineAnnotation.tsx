@@ -91,7 +91,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
     const messages = [
       {
         role: 'system' as const,
-        content: doc ? buildSystemMessage(doc.content, allAnnotations) : '你是一个学术阅读助手。',
+        content: doc ? buildSystemMessage(doc.content || doc.extractedText || '', allAnnotations) : '你是一个学术阅读助手。',
       },
       {
         role: 'user' as const,
