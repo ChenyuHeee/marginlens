@@ -404,10 +404,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 // ─── UI Store ───
 interface UIStore {
   sidebarOpen: boolean;
-  rightPanelTab: 'chat' | 'annotations';
+  rightPanelTab: 'chat' | 'annotations' | 'translate';
   rightPanelWidth: number;
   toggleSidebar: () => void;
-  setRightPanelTab: (tab: 'chat' | 'annotations') => void;
+  setRightPanelTab: (tab: 'chat' | 'annotations' | 'translate') => void;
   setRightPanelWidth: (width: number) => void;
 }
 

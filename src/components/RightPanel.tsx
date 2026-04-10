@@ -1,7 +1,8 @@
-import { MessageSquare, BookOpen, Settings, Sun, Moon } from 'lucide-react';
+import { MessageSquare, BookOpen, Languages, Settings, Sun, Moon } from 'lucide-react';
 import { useUIStore, useSettingsStore } from '@/stores';
 import { ChatPanel } from './ChatPanel';
 import { AnnotationsPanel } from './AnnotationsPanel';
+import { TranslatePanel } from './TranslatePanel';
 
 interface RightPanelProps {
   onOpenSettings: () => void;
@@ -43,6 +44,12 @@ export function RightPanel({ onOpenSettings }: RightPanelProps) {
           icon={<BookOpen size={12} />}
           label="批注"
         />
+        <TabButton
+          active={rightPanelTab === 'translate'}
+          onClick={() => setRightPanelTab('translate')}
+          icon={<Languages size={12} />}
+          label="翻译"
+        />
         <div className="flex-1" />
         <button
           onClick={toggleTheme}
@@ -67,7 +74,9 @@ export function RightPanel({ onOpenSettings }: RightPanelProps) {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {rightPanelTab === 'chat' ? <ChatPanel /> : <AnnotationsPanel />}
+        {rightPanelTab === 'chat' && <ChatPanel />}
+        {rightPanelTab === 'annotations' && <AnnotationsPanel />}
+        {rightPanelTab === 'translate' && <TranslatePanel />}
       </div>
     </div>
   );
