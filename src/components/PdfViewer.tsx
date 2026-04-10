@@ -111,6 +111,17 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
         // Build text layer manually from text content
         const textContent = await page.getTextContent();
+        console.log('[PDF Debug] textContent items:', textContent.items.length);
+        if (textContent.items.length > 0) {
+          const first = textContent.items[0];
+          console.log('[PDF Debug] first item:', JSON.stringify(first));
+          if ('str' in first) {
+            const tx = pdfjsLib.Util.transform(viewport.transform, first.transform);
+            console.log('[PDF Debug] viewport.transform:', viewport.transform);
+            console.log('[PDF Debug] tx:', tx);
+            console.log('[PDF Debug] fontHeight:', Math.hypot(tx[2], tx[3]));
+          }
+        }
         const textLayerDiv = window.document.createElement('div');
         textLayerDiv.className = 'pdf-text-layer';
         textLayerDiv.style.position = 'absolute';
@@ -135,17 +146,17 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           span.style.left = `${tx[4]}px`;
           span.style.top = `${tx[5] - fontHeight}px`;
           span.style.fontSize = `${fontHeight}px`;
-          span.style.fontFamily = item.fontName ? `${item.fontName}, sans-serif` : 'sans-serif';
-          span.style.color = 'transparent';
+          span.style.fontFamily = 'sans-serif';
+          span.style.color = 'rgba(255, 0, 0, 0.4)';
           span.style.whiteSpace = 'pre';
           span.style.cursor = 'text';
           span.style.transformOrigin = '0% 0%';
+          span.style.lineHeight = '1';
           if (angle !== 0) {
             span.style.transform = `rotate(${angle}rad)`;
           }
           // Scale width to match PDF glyph width
           if (item.width && item.str.length > 0) {
-            span.style.letterSpacing = '0px';
             const scaledWidth = item.width * viewport.scale;
             span.dataset.targetWidth = String(scaledWidth);
           }

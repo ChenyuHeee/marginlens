@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PDF Text Layer Debug</title>
+<style>
+body { margin: 20px; font-family: sans-serif; }
+#container { position: relative; display: inline-block; border: 2px solid red; }
+canvas { display: block; }
+#text-layer {
+  position: absolute; left: 0; top: 0; overflow: visible;
+}
+#text-layer span {
+  position: absolute;
+  white-space: pre;
+  color: rgba(255, 0, 0, 0.5);
+  border: 1px solid rgba(0,0,255,0.3);
+  cursor: text;
+  transform-origin: 0% 0%;
+  pointer-events: all;
+}
+#info { margin-top: 10px; font-size: 14px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h3>Upload a PDF to test text layer positioning</h3>
+<input type="file" id="file" accept=".pdf">
+<div id="container">
+  <canvas id="canvas"></canvas>
+  <div id="text-layer"></div>
+</div>
+<div id="info"></div>
+
+<script type="module">
+import * as pdfjsLib from '/marginlens/assets/pdf.worker.min-FHbmGBN0.mjs';
+</script>
+<script type="module">
+// Use CDN pdfjs for this debug page
+const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155';
+const script = document.createElement('script');
+script.src = `${PDFJS_CDN}/pdf.min.mjs`;
+script.type = 'module';
+
+// Inline module
+const moduleScript = document.createElement('script');
+moduleScript.type = 'module';
+moduleScript.textContent = `
+import * as pdfjsLib from '${PDFJS_CDN}/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = '${PDFJS_CDN}/pdf.worker.min.mjs';
+
+const info = document.getElementById('info');
+const log = (msg) => { info.textContent += msg + '\\n'; };
+
+document.getElementById('file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  info.textContent = '';
+  log('Loading PDF...');
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  log('Pages: ' + pdf.numPages);
+
+  const page = await pdf.getPage(1);
+  const scale = 1.5;
+  const viewport = page.getViewport({ scale });
+
+  const canvas = document.getElementById('canvas');
+  canvas.width = viewport.width * window.devicePixelRatio;
+  canvas.height = viewport.height * window.devicePixelRatio;
+  canvas.style.width = viewport.width + 'px';
+  canvas.style.height = viewport.height + 'px';
+  canvas.style.pointerEvents = 'none';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  log('Canvas rendered: ' + viewport.width + 'x' + viewport.height);
+
+  const textContent = await page.getTextContent();
+  log('Text items: ' + textContent.items.length);
+
+  const textLayer = document.getElementById('text-layer');
+  textLayer.innerHTML = '';
+  textLayer.style.width = viewport.width + 'px';
+  textLayer.style.height = viewport.height + 'px';
+
+  let itemCount = 0;
+  for (const item of textContent.items) {
+    if (!item.str) continue;
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const fontHeight = Math.hypot(tx[2], tx[3]);
+    const angle = Math.atan2(tx[1], tx[0]);
+
+    if (itemCount < 5) {
+      log('Item ' + itemCount + ': str="' + item.str.substring(0,30) + '"');
+      log('  transform: [' + item.transform.map(v=>v.toFixed(2)).join(', ') + ']');
+      log('  tx: [' + tx.map(v=>v.toFixed(2)).join(', ') + ']');
+      log('  fontHeight: ' + fontHeight.toFixed(2) + ', angle: ' + angle.toFixed(4));
+      log('  pos: left=' + tx[4].toFixed(1) + ', top=' + (tx[5]-fontHeight).toFixed(1));
+      log('  item.width=' + item.width + ', item.height=' + item.height);
+    }
+
+    const span = document.createElement('span');
+    span.textContent = item.str;
+    span.style.left = tx[4] + 'px';
+    span.style.top = (tx[5] - fontHeight) + 'px';
+    span.style.fontSize = fontHeight + 'px';
+    span.style.fontFamily = 'sans-serif';
+    span.style.lineHeight = '1';
+
+    if (angle !== 0) {
+      span.style.transform = 'rotate(' + angle + 'rad)';
+    }
+
+    textLayer.appendChild(span);
+    itemCount++;
+  }
+  log('Rendered ' + itemCount + ' spans');
+
+  // Adjust widths
+  textLayer.querySelectorAll('span').forEach((span, i) => {
+    // No scaleX adjustment for now, let's see raw positioning first
+  });
+});
+`;
+document.head.appendChild(moduleScript);
+</script>
+</body>
+</html>
