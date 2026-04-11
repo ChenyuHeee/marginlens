@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+import type { TextContent } from 'pdfjs-dist/types/src/display/api';
 import { useSelectionStore, useAnnotationStore, useDocumentStore, useUIStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
@@ -10,6 +11,30 @@ import { ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
 const worker = new PdfWorker();
 pdfjsLib.GlobalWorkerOptions.workerPort = worker;
+
+/**
+ * Safari does not support async iteration on ReadableStream (Symbol.asyncIterator),
+ * so pdfjs's page.getTextContent() which uses `for await...of` fails.
+ * This helper uses the standard .getReader() API instead.
+ */
+async function safeGetTextContent(page: PDFPageProxy): Promise<TextContent> {
+  const stream = page.streamTextContent();
+  const reader = stream.getReader();
+  const textContent: TextContent = {
+    items: [],
+    styles: Object.create(null),
+    lang: null,
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = value as Partial<TextContent>;
+    textContent.lang ??= chunk.lang ?? null;
+    Object.assign(textContent.styles, chunk.styles);
+    textContent.items.push(...(chunk.items ?? []));
+  }
+  return textContent;
+}
 
 interface PdfViewerProps {
   document: Document;
@@ -63,7 +88,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           const pages: string[] = [];
           for (let i = 1; i <= pdf.numPages; i++) {
             const p = await pdf.getPage(i);
-            const tc = await p.getTextContent();
+            const tc = await safeGetTextContent(p);
             const pageText = tc.items
               .filter((it) => 'str' in it && it.str)
               .map((it) => ('str' in it ? it.str : ''))
@@ -75,7 +100,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         }
       } catch (err) {
         if (!cancelled) {
-          const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+          const msg = err instanceof Error ? err.message : String(err);
           console.error('PDF load error:', err);
           setError(`加载 PDF 失败: ${msg}`);
           setLoading(false);
@@ -129,7 +154,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         await page.render({ canvas, canvasContext: ctx, viewport }).promise;
 
         // Build text layer manually from text content
-        const textContent = await page.getTextContent();
+        const textContent = await safeGetTextContent(page);
         const textLayerDiv = window.document.createElement('div');
         textLayerDiv.className = 'pdf-text-layer';
         textLayerDiv.style.position = 'absolute';
