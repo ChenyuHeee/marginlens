@@ -6,7 +6,7 @@ const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
-function getDB() {
+export function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db) {

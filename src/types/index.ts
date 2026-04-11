@@ -93,3 +93,12 @@ export interface SelectionInfo {
   startOffset: number;
   endOffset: number;
 }
+
+export interface GitHubSyncConfig {
+  token: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  path: string;       // directory in repo, e.g. 'notes'
+  username: string;    // authenticated GitHub username
+}

@@ -6,17 +6,19 @@ import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
-import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore } from '@/stores';
 import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { activeDocument, loadDocuments } = useDocumentStore();
   const { loadSettings, settings } = useSettingsStore();
+  const { loadConfig: loadGitHubConfig } = useGitHubSyncStore();
 
   useEffect(() => {
     loadSettings();
     loadDocuments();
+    loadGitHubConfig();
   }, []);
 
   useEffect(() => {

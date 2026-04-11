@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { X, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
-import { useSettingsStore } from '@/stores';
+import { useState, useEffect } from 'react';
+import { X, Plus, Trash2, Eye, EyeOff, GitFork, CheckCircle, AlertCircle, Loader2, Unlink } from 'lucide-react';
+import { useSettingsStore, useGitHubSyncStore } from '@/stores';
 import type { LLMProvider, PromptTemplate } from '@/types';
+import { validateToken, listRepos } from '@/lib/github';
 import { v4 as uuid } from 'uuid';
 
 interface SettingsDialogProps {
@@ -10,7 +11,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<'providers' | 'templates' | 'display'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'templates' | 'display' | 'github'>('providers');
 
   if (!open) return null;
 
@@ -18,6 +19,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     { id: 'providers' as const, label: 'API 配置' },
     { id: 'templates' as const, label: '提示模板' },
     { id: 'display' as const, label: '显示设置' },
+    { id: 'github' as const, label: 'GitHub 同步' },
   ];
 
   return (
@@ -78,6 +80,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {activeTab === 'providers' && <ProvidersSettings />}
           {activeTab === 'templates' && <TemplatesSettings />}
           {activeTab === 'display' && <DisplaySettings />}
+          {activeTab === 'github' && <GitHubSettings />}
         </div>
       </div>
     </div>
@@ -422,6 +425,225 @@ function DisplaySettings() {
           className="w-full accent-[var(--color-primary)]"
         />
       </div>
+    </div>
+  );
+}
+
+function GitHubSettings() {
+  const { config, saveConfig, clearConfig, loadConfig } = useGitHubSyncStore();
+  const [token, setToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [repos, setRepos] = useState<{ full_name: string; default_branch: string }[]>([]);
+  const [selectedRepo, setSelectedRepo] = useState('');
+  const [branch, setBranch] = useState('main');
+  const [path, setPath] = useState('notes');
+  const [status, setStatus] = useState<'idle' | 'validating' | 'valid' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [username, setUsername] = useState('');
+
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
+
+  // Pre-fill from existing config
+  useEffect(() => {
+    if (config) {
+      setToken(config.token);
+      setSelectedRepo(`${config.owner}/${config.repo}`);
+      setBranch(config.branch);
+      setPath(config.path);
+      setUsername(config.username);
+      setStatus('valid');
+    }
+  }, [config]);
+
+  const handleValidateToken = async () => {
+    if (!token.trim()) return;
+    setStatus('validating');
+    setErrorMsg('');
+    try {
+      const user = await validateToken(token.trim());
+      setUsername(user);
+      const repoList = await listRepos(token.trim());
+      setRepos(repoList);
+      setStatus('valid');
+      if (repoList.length > 0 && !selectedRepo) {
+        setSelectedRepo(repoList[0].full_name);
+        setBranch(repoList[0].default_branch);
+      }
+    } catch (e) {
+      setStatus('error');
+      setErrorMsg(e instanceof Error ? e.message : '验证失败');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!selectedRepo) return;
+    const [owner, repo] = selectedRepo.split('/');
+    await saveConfig({
+      token: token.trim(),
+      owner,
+      repo,
+      branch,
+      path: path.replace(/^\/+|\/+$/g, ''),
+      username,
+    });
+  };
+
+  const handleDisconnect = async () => {
+    await clearConfig();
+    setToken('');
+    setSelectedRepo('');
+    setBranch('main');
+    setPath('notes');
+    setRepos([]);
+    setUsername('');
+    setStatus('idle');
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2 mb-3">
+        <GitFork size={16} style={{ color: 'var(--color-text)' }} />
+        <span className="text-[13px] font-medium">将笔记同步到 GitHub 仓库</span>
+      </div>
+
+      {/* Current connection status */}
+      {config && (
+        <div
+          className="flex items-center justify-between p-3 rounded-xl"
+          style={{ background: 'var(--color-success-subtle, rgba(52,199,89,0.08))', border: '1px solid var(--color-success, #34c759)' }}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle size={14} style={{ color: 'var(--color-success, #34c759)' }} />
+            <span className="text-[12px]">
+              已连接 <strong>@{config.username}</strong> → {config.owner}/{config.repo}/{config.path}
+            </span>
+          </div>
+          <button
+            onClick={handleDisconnect}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-lg transition-all"
+            style={{ color: 'var(--color-danger)', background: 'rgba(255,59,48,0.08)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,59,48,0.15)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,59,48,0.08)')}
+          >
+            <Unlink size={11} />
+            断开
+          </button>
+        </div>
+      )}
+
+      {/* Token input */}
+      <SettingField label="Personal Access Token">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type={showToken ? 'text' : 'password'}
+              value={token}
+              onChange={(e) => { setToken(e.target.value); setStatus('idle'); }}
+              className="mac-input w-full pr-8"
+              style={{ fontSize: 12 }}
+              placeholder="ghp_xxxx 或 github_pat_xxxx"
+            />
+            <button
+              onClick={() => setShowToken(!showToken)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5"
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+          <button
+            onClick={handleValidateToken}
+            disabled={!token.trim() || status === 'validating'}
+            className="mac-btn flex items-center gap-1 whitespace-nowrap"
+            style={{ fontSize: 12, padding: '4px 12px', opacity: !token.trim() ? 0.5 : 1 }}
+          >
+            {status === 'validating' ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+            验证
+          </button>
+        </div>
+        <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+          需要 <code className="text-[10px]" style={{ background: 'var(--color-bg-tertiary)', padding: '1px 4px', borderRadius: 3 }}>Contents: Read and write</code> 权限。
+          <a
+            href="https://github.com/settings/tokens?type=beta"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-1"
+            style={{ color: 'var(--color-primary)' }}
+          >
+            创建 Token →
+          </a>
+        </p>
+      </SettingField>
+
+      {/* Error */}
+      {status === 'error' && (
+        <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--color-danger)' }}>
+          <AlertCircle size={13} />
+          {errorMsg}
+        </div>
+      )}
+
+      {/* Repo selection (only after validation) */}
+      {status === 'valid' && (
+        <>
+          <SettingField label="目标仓库">
+            <select
+              value={selectedRepo}
+              onChange={(e) => {
+                setSelectedRepo(e.target.value);
+                const r = repos.find((r) => r.full_name === e.target.value);
+                if (r) setBranch(r.default_branch);
+              }}
+              className="mac-input w-full"
+              style={{ fontSize: 12 }}
+            >
+              {repos.map((r) => (
+                <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+              ))}
+            </select>
+          </SettingField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <SettingField label="分支">
+              <input
+                type="text"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                className="mac-input w-full"
+                style={{ fontSize: 12 }}
+                placeholder="main"
+              />
+            </SettingField>
+            <SettingField label="目录路径">
+              <input
+                type="text"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                className="mac-input w-full"
+                style={{ fontSize: 12 }}
+                placeholder="notes"
+              />
+            </SettingField>
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={!selectedRepo}
+            className="w-full py-2.5 text-[13px] font-medium rounded-xl transition-all"
+            style={{
+              background: 'var(--color-primary)',
+              color: '#fff',
+              opacity: selectedRepo ? 1 : 0.5,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = selectedRepo ? '1' : '0.5')}
+          >
+            {config ? '更新配置' : '保存配置'}
+          </button>
+        </>
+      )}
     </div>
   );
 }

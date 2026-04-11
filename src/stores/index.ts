@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Document, Annotation, ChatSession, ChatMessage, AppSettings, SelectionInfo } from '@/types';
+import type { Document, Annotation, ChatSession, ChatMessage, AppSettings, SelectionInfo, GitHubSyncConfig } from '@/types';
 import * as db from '@/lib/db';
 import { DEFAULT_SETTINGS } from '@/lib/defaults';
 import { parseAnnotationsFromMarkdown } from '@/lib/annotations';
@@ -422,4 +422,43 @@ export const useUIStore = create<UIStore>((set) => ({
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
   setRightPanelWidth: (width) => set({ rightPanelWidth: Math.max(300, Math.min(800, width)) }),
   setShowApiKeyAlert: (show) => set({ showApiKeyAlert: show }),
+}));
+
+// ─── GitHub Sync Store ───
+interface GitHubSyncStore {
+  config: GitHubSyncConfig | null;
+  syncing: boolean;
+  lastSyncedAt: number | null;
+  loadConfig: () => Promise<void>;
+  saveConfig: (config: GitHubSyncConfig) => Promise<void>;
+  clearConfig: () => Promise<void>;
+  setSyncing: (v: boolean) => void;
+  setLastSyncedAt: (t: number) => void;
+}
+
+export const useGitHubSyncStore = create<GitHubSyncStore>((set) => ({
+  config: null,
+  syncing: false,
+  lastSyncedAt: null,
+
+  loadConfig: async () => {
+    const d = await (await db.getDB()).get('settings', 'github_sync');
+    if (d) {
+      const { id: _, ...config } = d;
+      set({ config: config as GitHubSyncConfig });
+    }
+  },
+
+  saveConfig: async (config) => {
+    await (await db.getDB()).put('settings', { ...config, id: 'github_sync' });
+    set({ config });
+  },
+
+  clearConfig: async () => {
+    await (await db.getDB()).delete('settings', 'github_sync');
+    set({ config: null, lastSyncedAt: null });
+  },
+
+  setSyncing: (v) => set({ syncing: v }),
+  setLastSyncedAt: (t) => set({ lastSyncedAt: t }),
 }));
