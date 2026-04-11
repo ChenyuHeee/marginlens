@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { useSelectionStore, useAnnotationStore, useDocumentStore, useUIStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
 
-// Configure worker — use legacy build for Safari compatibility
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+// Configure worker using Vite's ?worker import for reliable cross-browser loading
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
+const worker = new PdfWorker();
+pdfjsLib.GlobalWorkerOptions.workerPort = worker;
 
 interface PdfViewerProps {
   document: Document;
