@@ -155,6 +155,69 @@ body {
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body hr { border: none; border-top: 1px solid var(--color-border-strong); margin: 1.5em 0; }
 
+/* ── Live Markdown Editor (Milkdown) ── */
+.live-editor-wrapper {
+  height: 100%;
+}
+.live-editor-wrapper .milkdown {
+  --crepe-color-background: var(--color-bg);
+  --crepe-color-on-background: var(--color-text);
+  --crepe-color-surface: var(--color-bg-secondary);
+  --crepe-color-surface-low: var(--color-bg-tertiary);
+  --crepe-color-on-surface: var(--color-text);
+  --crepe-color-on-surface-variant: var(--color-text-secondary);
+  --crepe-color-outline: var(--color-border-strong);
+  --crepe-color-primary: var(--color-primary);
+  --crepe-color-secondary: var(--color-border);
+  --crepe-color-on-secondary: var(--color-text);
+  --crepe-color-inverse: var(--color-bg-elevated);
+  --crepe-color-on-inverse: var(--color-text);
+  --crepe-color-inline-code: var(--color-primary);
+  --crepe-color-error: var(--color-danger);
+  --crepe-color-hover: var(--color-card-hover);
+  --crepe-color-selected: var(--color-primary-subtle);
+  --crepe-color-inline-area: var(--color-bg-tertiary);
+
+  --crepe-font-title: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Inter', sans-serif;
+  --crepe-font-default: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Inter', sans-serif;
+  --crepe-font-code: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+
+  --crepe-shadow-1: var(--shadow-sm);
+  --crepe-shadow-2: var(--shadow-md);
+
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+.live-editor-wrapper .milkdown .ProseMirror {
+  padding: 32px 40px;
+  min-height: calc(100vh - 120px);
+  font-size: 15px;
+  line-height: 1.78;
+}
+@media (min-width: 1024px) {
+  .live-editor-wrapper .milkdown .ProseMirror {
+    padding: 32px 80px;
+  }
+}
+.live-editor-wrapper .milkdown h1 { font-size: 1.75em; font-weight: 700; letter-spacing: -0.025em; }
+.live-editor-wrapper .milkdown h2 { font-size: 1.4em; font-weight: 650; letter-spacing: -0.015em; }
+.live-editor-wrapper .milkdown h3 { font-size: 1.15em; font-weight: 600; letter-spacing: -0.01em; }
+.live-editor-wrapper .milkdown h4,
+.live-editor-wrapper .milkdown h5,
+.live-editor-wrapper .milkdown h6 { font-size: 1em; font-weight: 600; }
+.live-editor-wrapper .milkdown blockquote {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-subtle);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 0.5em 1em;
+}
+.live-editor-wrapper .milkdown hr {
+  border: none;
+  border-top: 1px solid var(--color-border-strong);
+  margin: 1.5em 0;
+}
+
 /* ── Annotation highlights ── */
 .annotation-highlight {
   background-color: var(--color-highlight);

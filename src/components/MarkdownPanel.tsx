@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Eye, Edit3, Download, Save } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
+import { LiveMarkdownEditor } from './LiveMarkdownEditor';
 import { useDocumentStore, useAnnotationStore } from '@/stores';
 import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
 
@@ -9,10 +10,13 @@ interface MarkdownPanelProps {
   documentId: string;
 }
 
+const NEW_NOTE_CONTENT = '# 新笔记\n\n在此开始编写...\n';
+
 export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
-  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
+  const [mode, setMode] = useState<'preview' | 'edit'>(
+    content === NEW_NOTE_CONTENT ? 'edit' : 'preview'
+  );
   const [editContent, setEditContent] = useState(content);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { updateDocumentContent } = useDocumentStore();
   const { annotations } = useAnnotationStore();
   const [dirty, setDirty] = useState(false);
@@ -21,14 +25,8 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   useEffect(() => {
     setEditContent(content);
     setDirty(false);
+    setMode(content === NEW_NOTE_CONTENT ? 'edit' : 'preview');
   }, [content, documentId]);
-
-  // Auto-focus textarea when entering edit mode
-  useEffect(() => {
-    if (mode === 'edit' && textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, [mode]);
 
   const handleSave = useCallback(async () => {
     await updateDocumentContent(documentId, editContent);
@@ -137,39 +135,13 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
         {mode === 'preview' ? (
           <MarkdownViewer content={content} documentId={documentId} />
         ) : (
-          <div className="h-full overflow-auto px-4 py-4 lg:px-10">
-            <textarea
-              ref={textareaRef}
-              value={editContent}
-              onChange={(e) => {
-                setEditContent(e.target.value);
+          <div className="h-full overflow-auto">
+            <LiveMarkdownEditor
+              content={editContent}
+              documentId={documentId}
+              onChange={(md) => {
+                setEditContent(md);
                 setDirty(true);
-              }}
-              className="w-full h-full min-h-[calc(100vh-120px)] resize-none outline-none"
-              style={{
-                fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-                fontSize: 14,
-                lineHeight: 1.7,
-                color: 'var(--color-text)',
-                background: 'transparent',
-                tabSize: 2,
-              }}
-              spellCheck={false}
-              onKeyDown={(e) => {
-                // Tab key inserts 2 spaces
-                if (e.key === 'Tab') {
-                  e.preventDefault();
-                  const start = e.currentTarget.selectionStart;
-                  const end = e.currentTarget.selectionEnd;
-                  const value = e.currentTarget.value;
-                  setEditContent(value.substring(0, start) + '  ' + value.substring(end));
-                  setDirty(true);
-                  requestAnimationFrame(() => {
-                    if (textareaRef.current) {
-                      textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 2;
-                    }
-                  });
-                }
               }}
             />
           </div>
