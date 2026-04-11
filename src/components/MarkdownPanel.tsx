@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Eye, Edit3, Download, Save, GitBranch, Loader2, Check } from 'lucide-react';
+import { Eye, Edit3, Download, Save, GitBranch } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
+import { SyncDialog } from './SyncDialog';
 import { useDocumentStore, useAnnotationStore, useGitHubSyncStore } from '@/stores';
 import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
-import { pushFile, toFilename } from '@/lib/github';
 
 interface MarkdownPanelProps {
   content: string;
@@ -50,31 +50,8 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   };
 
   // GitHub sync
-  const { config: ghConfig, syncing, setSyncing, setLastSyncedAt } = useGitHubSyncStore();
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-  const handleSync = async () => {
-    if (!ghConfig || syncing) return;
-    setSyncing(true);
-    setSyncStatus('idle');
-    try {
-      const doc = useDocumentStore.getState().activeDocument;
-      const title = doc?.title || 'document';
-      const filename = toFilename(title);
-      const docAnnotations = annotations.filter((a) => a.documentId === documentId);
-      const contentToSync = serializeAnnotationsToMarkdown(editContent, docAnnotations);
-      await pushFile(ghConfig, filename, contentToSync, `Update ${title} via MarginLens`);
-      setSyncStatus('success');
-      setLastSyncedAt(Date.now());
-      setTimeout(() => setSyncStatus('idle'), 2500);
-    } catch (e) {
-      setSyncStatus('error');
-      console.error('GitHub sync failed:', e);
-      setTimeout(() => setSyncStatus('idle'), 3000);
-    } finally {
-      setSyncing(false);
-    }
-  };
+  const { config: ghConfig } = useGitHubSyncStore();
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
 
   // Keyboard shortcut: Cmd/Ctrl+S to save
   useEffect(() => {
@@ -157,22 +134,13 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
           </button>
           {ghConfig && (
             <button
-              onClick={handleSync}
-              disabled={syncing}
+              onClick={() => setSyncDialogOpen(true)}
               className="mac-btn flex items-center gap-1"
-              style={{
-                fontSize: 11,
-                padding: '3px 10px',
-                color: syncStatus === 'success' ? 'var(--color-success, #34c759)'
-                  : syncStatus === 'error' ? 'var(--color-danger)'
-                  : undefined,
-              }}
-              title={`同步到 ${ghConfig.owner}/${ghConfig.repo}/${ghConfig.path}`}
+              style={{ fontSize: 11, padding: '3px 10px' }}
+              title="同步到 GitHub"
             >
-              {syncing ? <Loader2 size={11} className="animate-spin" />
-                : syncStatus === 'success' ? <Check size={11} />
-                : <GitBranch size={11} />}
-              {syncing ? '同步中...' : syncStatus === 'success' ? '已同步' : syncStatus === 'error' ? '失败' : '同步'}
+              <GitBranch size={11} />
+              同步
             </button>
           )}
         </div>
@@ -195,6 +163,17 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
           </div>
         )}
       </div>
+
+      {/* GitHub Sync Dialog */}
+      <SyncDialog
+        open={syncDialogOpen}
+        onClose={() => setSyncDialogOpen(false)}
+        content={serializeAnnotationsToMarkdown(
+          editContent,
+          annotations.filter((a) => a.documentId === documentId),
+        )}
+        title={useDocumentStore.getState().activeDocument?.title || 'document'}
+      />
     </div>
   );
 }
