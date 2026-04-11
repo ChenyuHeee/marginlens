@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Quote,
   Pin,
+  Sparkles,
 } from 'lucide-react';
 import {
   useChatStore,
@@ -47,7 +48,6 @@ export function ChatPanel() {
   const scrollToHighlight = (text: string) => {
     const container = document.getElementById('markdown-scroll-container');
     if (!container) return;
-    // Find the annotation-highlight span or text match in the viewer
     const highlights = container.querySelectorAll('.annotation-highlight');
     for (const el of highlights) {
       if (el.textContent?.includes(text.slice(0, 30))) {
@@ -74,7 +74,6 @@ export function ChatPanel() {
       session = await createSession(activeDocument.id);
     }
 
-    // Inject document context + annotations as system message on first user message
     const allAnnotations = useAnnotationStore.getState().annotations.filter(a => a.documentId === activeDocument.id);
     if (session.messages.length === 0) {
       const docText = activeDocument.content || activeDocument.extractedText || '';
@@ -129,7 +128,6 @@ export function ChatPanel() {
 
   const handlePinAsAnnotation = (content: string, selectedText?: string, userQuestion?: string) => {
     if (!activeDocument) return;
-    // Use the user's question as the annotation title, fall back to selected text
     const title = userQuestion || selectedText || '批注';
     addAnnotation({
       documentId: activeDocument.id,
@@ -169,17 +167,17 @@ export function ChatPanel() {
           <button
             key={s.id}
             onClick={() => setActiveSession(s.id)}
-            className="group flex items-center gap-1 px-2 py-1 text-[11px] rounded-md whitespace-nowrap transition-colors"
+            className="group flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-all"
             style={{
               background: activeSession?.id === s.id ? 'var(--color-primary-light)' : 'transparent',
-              color: activeSession?.id === s.id ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              color: activeSession?.id === s.id ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
             }}
           >
-            <MessageSquare size={9} />
+            <MessageSquare size={10} />
             <span>{s.title}</span>
             <span
               onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-              className="ml-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 cursor-pointer"
+              className="ml-0.5 opacity-0 group-hover:opacity-50 hover:!opacity-100 cursor-pointer transition-opacity"
             >
               <Trash2 size={9} />
             </span>
@@ -187,48 +185,70 @@ export function ChatPanel() {
         ))}
         <button
           onClick={() => createSession(activeDocument.id)}
-          className="p-1 rounded-md transition-colors"
+          className="p-1 rounded-md transition-all"
           title="新建对话"
           style={{ color: 'var(--color-text-tertiary)' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-card-hover)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--color-card-hover)';
+            e.currentTarget.style.color = 'var(--color-text-secondary)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--color-text-tertiary)';
+          }}
         >
           <Plus size={13} />
         </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
         {(!activeSession || activeSession.messages.filter(m => m.role !== 'system').length === 0) && (
-          <div className="text-center py-10" style={{ color: 'var(--color-text-tertiary)' }}>
-            <MessageSquare size={28} className="mx-auto mb-3 opacity-20" />
-            <p className="text-[12px]">选中文本提问，或直接在下方输入</p>
-            <p className="text-[11px] mt-1">LLM 将自动获取文档全文作为上下文</p>
+          <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+              style={{ background: 'var(--color-primary-light)' }}
+            >
+              <Sparkles size={20} style={{ color: 'var(--color-primary)' }} />
+            </div>
+            <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              开始对话
+            </p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              选中文本提问，或直接在下方输入
+            </p>
           </div>
         )}
 
         {activeSession?.messages.filter(m => m.role !== 'system').map((msg, idx, filtered) => (
-          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`}>
             <div
-              className={`max-w-[88%] text-[13px] leading-relaxed ${
+              className={`max-w-[85%] text-[13px] leading-relaxed ${
                 msg.role === 'user'
-                  ? 'rounded-2xl rounded-br-md px-3.5 py-2'
-                  : 'rounded-2xl rounded-bl-md px-3.5 py-2'
+                  ? 'rounded-2xl rounded-br-sm px-3.5 py-2.5'
+                  : 'rounded-2xl rounded-bl-sm px-3.5 py-2.5'
               }`}
               style={
                 msg.role === 'user'
-                  ? { background: 'var(--color-primary)', color: 'white' }
-                  : { background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }
+                  ? {
+                      background: 'var(--color-primary)',
+                      color: 'white',
+                      boxShadow: '0 1px 3px rgba(52, 120, 246, 0.2)',
+                    }
+                  : {
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border)',
+                    }
               }
             >
               {msg.selectedText && msg.role === 'user' && (
                 <div
-                  className="mb-1.5 px-2 py-1 rounded-md text-[11px] flex items-start gap-1 cursor-pointer hover:opacity-80"
+                  className="mb-2 px-2.5 py-1.5 rounded-lg text-[11px] flex items-start gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
                   style={{ background: 'rgba(255,255,255,0.15)' }}
                   onClick={(e) => { e.stopPropagation(); scrollToHighlight(msg.selectedText!); }}
                   title="点击跳转到原文"
                 >
-                  <Quote size={9} className="mt-0.5 flex-shrink-0 opacity-70" />
+                  <Quote size={10} className="mt-0.5 flex-shrink-0 opacity-60" />
                   <span className="line-clamp-2 opacity-90">{msg.selectedText}</span>
                 </div>
               )}
@@ -242,14 +262,14 @@ export function ChatPanel() {
                 <div className="whitespace-pre-wrap">{msg.content}</div>
               )}
               {msg.role === 'assistant' && !msg.isStreaming && msg.content && (() => {
-                // Find the preceding user message to get the question
                 const prevUserMsg = filtered.slice(0, idx).reverse().find(m => m.role === 'user');
                 return (
-                  <div className="mt-1.5 flex justify-end">
+                  <div className="mt-2 pt-1.5 flex justify-end" style={{ borderTop: '1px solid var(--color-border)' }}>
                     <button
                       onClick={() => handlePinAsAnnotation(msg.content, prevUserMsg?.selectedText, prevUserMsg?.content)}
-                      className="flex items-center gap-1 text-[10px] opacity-40 hover:opacity-80 transition-opacity"
+                      className="flex items-center gap-1 text-[10px] font-medium opacity-40 hover:opacity-80 transition-opacity"
                       title="钉为批注"
+                      style={{ color: 'var(--color-primary)' }}
                     >
                       <Pin size={9} />
                       钉为批注
@@ -264,22 +284,27 @@ export function ChatPanel() {
       </div>
 
       {/* Input */}
-      <div className="p-2.5 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border)' }}>
-        <div className="flex items-end gap-1.5">
+      <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border)' }}>
+        <div
+          className="flex items-end gap-2 p-1.5 rounded-xl"
+          style={{
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入问题... (Enter 发送)"
             rows={1}
-            className="mac-input"
+            className="flex-1 bg-transparent border-none outline-none resize-none"
             style={{
               maxHeight: 100,
-              minHeight: 34,
-              resize: 'none',
-              borderRadius: 'var(--radius-md)',
-              padding: '7px 10px',
+              minHeight: 32,
+              padding: '6px 8px',
               fontSize: 13,
+              color: 'var(--color-text)',
             }}
             onInput={(e) => {
               const t = e.target as HTMLTextAreaElement;
@@ -288,18 +313,26 @@ export function ChatPanel() {
             }}
           />
           {isStreaming ? (
-            <button onClick={stopStreaming} className="mac-btn" style={{ padding: '7px 8px', borderColor: 'transparent', color: '#ff3b30' }} title="停止">
-              <StopCircle size={15} />
+            <button
+              onClick={stopStreaming}
+              className="p-2 rounded-lg transition-all flex-shrink-0"
+              style={{ color: 'var(--color-danger)' }}
+              title="停止"
+            >
+              <StopCircle size={16} />
             </button>
           ) : (
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="mac-btn mac-btn-primary disabled:opacity-30"
-              style={{ padding: '7px 8px' }}
+              className="p-2 rounded-lg transition-all flex-shrink-0 disabled:opacity-20"
+              style={{
+                background: input.trim() ? 'var(--color-primary)' : 'transparent',
+                color: input.trim() ? 'white' : 'var(--color-text-tertiary)',
+              }}
               title="发送"
             >
-              <Send size={15} />
+              <Send size={14} />
             </button>
           )}
         </div>

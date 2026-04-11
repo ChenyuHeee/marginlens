@@ -46,7 +46,6 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       session = await chatStore.createSession(documentId);
     }
 
-    // Inject full document context + annotations as system message if it hasn't been added
     const activeDoc = useDocumentStore.getState().activeDocument;
     const allAnnotations = useAnnotationStore.getState().annotations.filter(a => a.documentId === documentId);
     if (activeDoc && session.messages.length === 0) {
@@ -57,7 +56,6 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       });
     }
 
-    // Build hidden context for LLM (not displayed to user)
     let hiddenContext = '';
     if (selectedText) {
       hiddenContext += `用户选中的文本：\n"${selectedText}"\n\n`;
@@ -145,7 +143,6 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       return;
     }
 
-    // Create annotation immediately with loading state
     const annotation = await annotationStore.addAnnotation({
       documentId,
       selectedText: selection.text,
@@ -211,21 +208,21 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div
-        className="rounded-xl overflow-hidden"
+        className="rounded-2xl overflow-hidden animate-scale-in"
         style={{
-          backgroundColor: 'var(--color-card)',
+          backgroundColor: 'var(--color-bg-elevated)',
           border: '1px solid var(--color-border-strong)',
-          boxShadow: 'var(--shadow-lg)',
+          boxShadow: 'var(--shadow-xl)',
           minWidth: 300,
-          backdropFilter: 'blur(20px)',
+          backdropFilter: 'blur(24px)',
         }}
       >
         {/* Action bar */}
-        <div className="flex items-center gap-0.5 p-1.5" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <div className="flex items-center gap-1 p-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
           <button
             onClick={() => setShowTemplates(!showTemplates)}
             className="mac-btn mac-btn-primary"
-            style={{ fontSize: 11, padding: '4px 10px' }}
+            style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 'var(--radius-sm)' }}
           >
             <Sparkles size={12} />
             AI 提问
@@ -233,7 +230,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
           <button
             onClick={handleAddAnnotation}
             className="mac-btn"
-            style={{ fontSize: 11, padding: '4px 10px' }}
+            style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 'var(--radius-sm)' }}
           >
             <MessageSquarePlus size={12} />
             批注
@@ -242,7 +239,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
             onClick={handleTranslate}
             disabled={translating}
             className="mac-btn"
-            style={{ fontSize: 11, padding: '4px 10px' }}
+            style={{ fontSize: 11.5, padding: '5px 12px', borderRadius: 'var(--radius-sm)' }}
           >
             <Languages size={12} />
             {translating ? '翻译中...' : '翻译'}
@@ -251,17 +248,17 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
 
         {/* Template grid */}
         {showTemplates && (
-          <div className="p-1.5 grid grid-cols-2 gap-0.5" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div className="p-2 grid grid-cols-2 gap-1" style={{ borderBottom: '1px solid var(--color-border)' }}>
             {templates.map((t) => (
               <button
                 key={t.id}
                 onClick={() => handleAskWithTemplate(t.prompt)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg transition-colors text-left"
+                className="flex items-center gap-2 px-3 py-2 text-[11.5px] rounded-lg transition-all text-left"
                 style={{ color: 'var(--color-text)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-card-hover)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <span>{t.icon}</span>
+                <span className="text-[13px]">{t.icon}</span>
                 <span>{t.name}</span>
               </button>
             ))}
@@ -269,7 +266,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
         )}
 
         {/* Quick question input */}
-        <div className="p-1.5 flex items-center gap-1.5">
+        <div className="p-2 flex items-center gap-1.5">
           <input
             type="text"
             placeholder="输入问题..."
@@ -283,15 +280,15 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
               if (e.key === 'Escape') onClose();
             }}
             className="mac-input"
-            style={{ fontSize: 12 }}
+            style={{ fontSize: 12.5, borderRadius: 'var(--radius-sm)' }}
           />
           <button
             onClick={handleAskCustom}
             disabled={!customQuestion.trim()}
-            className="mac-btn mac-btn-primary disabled:opacity-30"
-            style={{ padding: '5px 8px' }}
+            className="mac-btn mac-btn-primary disabled:opacity-20"
+            style={{ padding: '6px 9px', borderRadius: 'var(--radius-sm)' }}
           >
-            <ArrowRight size={12} />
+            <ArrowRight size={13} />
           </button>
         </div>
       </div>

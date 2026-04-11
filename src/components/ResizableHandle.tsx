@@ -41,8 +41,11 @@ export function ResizableHandle({ side }: ResizableHandleProps) {
 
   return (
     <div
-      className="w-1 cursor-col-resize hover:bg-indigo-500 active:bg-indigo-500 transition-colors flex-shrink-0"
+      className="w-[3px] cursor-col-resize transition-colors flex-shrink-0 group"
+      style={{ background: 'transparent' }}
       onMouseDown={handleMouseDown}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-primary)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
     />
   );
 }

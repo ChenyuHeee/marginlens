@@ -7,7 +7,7 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
 import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore } from '@/stores';
-import { Upload } from 'lucide-react';
+import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -52,19 +52,41 @@ export default function App() {
 }
 
 function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const features = [
+    { icon: <FileText size={14} />, text: '支持 Markdown 与 PDF 阅读' },
+    { icon: <Sparkles size={14} />, text: '选中文本即可向 AI 提问' },
+    { icon: <MessageSquare size={14} />, text: 'LLM 自动理解文档全文上下文' },
+    { icon: <BookOpen size={14} />, text: '批注直接内嵌在文档中' },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center" style={{ color: 'var(--color-text-tertiary)' }}>
-      <div className="text-center max-w-sm">
-        <div className="text-4xl mb-3">🔍</div>
-        <h1 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--color-text)' }}>
+    <div className="flex-1 flex flex-col items-center justify-center animate-fade-in" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="text-center max-w-md">
+        {/* Logo */}
+        <div
+          className="w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-5"
+          style={{
+            background: 'linear-gradient(135deg, var(--color-primary-light), var(--color-primary-subtle))',
+            boxShadow: '0 4px 16px rgba(52, 120, 246, 0.10)',
+          }}
+        >
+          <span className="text-3xl">🔍</span>
+        </div>
+
+        <h1 className="text-2xl font-bold tracking-tight mb-1" style={{ color: 'var(--color-text)' }}>
           MarginLens
         </h1>
-        <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-          智能论文阅读工具 · 划线提问 · AI 辅助理解
+        <p className="text-[13px] mb-8" style={{ color: 'var(--color-text-secondary)' }}>
+          智能论文阅读工具 · AI 辅助理解
         </p>
-        <div className="flex flex-col gap-2.5 items-center">
-          <label className="mac-btn mac-btn-primary cursor-pointer" style={{ padding: '8px 20px', fontSize: 13, borderRadius: 'var(--radius-md)' }}>
-            <Upload size={14} />
+
+        {/* Action buttons */}
+        <div className="flex flex-col gap-3 items-center mb-10">
+          <label
+            className="mac-btn mac-btn-primary cursor-pointer"
+            style={{ padding: '10px 28px', fontSize: 14, borderRadius: 'var(--radius-md)', fontWeight: 500 }}
+          >
+            <Upload size={15} />
             导入文件
             <input
               type="file"
@@ -87,17 +109,25 @@ function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
           </label>
           <button
             onClick={onOpenSettings}
-            className="text-[12px]"
+            className="text-[12px] font-medium transition-opacity hover:opacity-70"
             style={{ color: 'var(--color-primary)' }}
           >
             配置 API Key →
           </button>
         </div>
-        <div className="mt-8 text-[11px] space-y-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-          <p>选中文本即可向 AI 提问</p>
-          <p>LLM 自动理解文档全文上下文</p>
-          <p>批注直接内嵌在文档中</p>
-          <p>支持 OpenAI / DeepSeek / Qwen / Ollama</p>
+
+        {/* Feature list */}
+        <div className="space-y-2.5">
+          {features.map((f, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 text-[12px] justify-center"
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              <span style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>{f.icon}</span>
+              <span>{f.text}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
