@@ -75,7 +75,9 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(`加载 PDF 失败: ${err instanceof Error ? err.message : '未知错误'}`);
+          const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+          console.error('PDF load error:', err);
+          setError(`加载 PDF 失败: ${msg}`);
           setLoading(false);
         }
       }
