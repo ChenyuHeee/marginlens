@@ -35,6 +35,14 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   const docAnnotations = annotations
     .filter((a) => a.documentId === documentId)
     .sort((a, b) => {
+      const posHintA = a.positionHint?.startOffset;
+      const posHintB = b.positionHint?.startOffset;
+      if (typeof posHintA === 'number' && typeof posHintB === 'number') {
+        return posHintA - posHintB;
+      }
+      if (typeof posHintA === 'number') return -1;
+      if (typeof posHintB === 'number') return 1;
+
       // Sort by position in document content (earlier text first)
       const posA = content.indexOf(a.selectedText);
       const posB = content.indexOf(b.selectedText);
@@ -50,15 +58,21 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
       if (!sel || sel.isCollapsed || !sel.rangeCount) return;
 
       const range = sel.getRangeAt(0);
-      const text = sel.toString().trim();
+      const rawText = sel.toString();
+      const text = rawText.trim();
       if (!text || !containerRef.current?.contains(range.commonAncestorContainer)) return;
 
       const rect = range.getBoundingClientRect();
 
-      const fullText = containerRef.current.textContent || '';
-      const selStart = fullText.indexOf(text);
-      const contextBefore = selStart > 0 ? fullText.slice(Math.max(0, selStart - 200), selStart) : '';
-      const contextAfter = fullText.slice(selStart + text.length, selStart + text.length + 200);
+      const offsetInfo = getRangeOffsets(containerRef.current, range, '.inline-annotation, .annotation-portal');
+      const leadingTrim = rawText.length - rawText.trimStart().length;
+      const trailingTrim = rawText.length - rawText.trimEnd().length;
+      const selStart = offsetInfo.start + leadingTrim;
+      const selEnd = Math.max(selStart, offsetInfo.end - trailingTrim);
+      const contextBefore = selStart > 0
+        ? offsetInfo.fullText.slice(Math.max(0, selStart - 200), selStart)
+        : '';
+      const contextAfter = offsetInfo.fullText.slice(selEnd, selEnd + 200);
 
       const paragraphs = containerRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, td, th');
       let paragraphIndex = 0;
@@ -75,8 +89,8 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
         contextAfter,
         rect,
         paragraphIndex,
-        startOffset: range.startOffset,
-        endOffset: range.endOffset,
+        startOffset: selStart,
+        endOffset: selEnd,
       };
 
       setPopupSelection(info);
@@ -139,7 +153,12 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
 
     for (const annotation of docAnnotations) {
       // Try to highlight the text in the rendered markdown
-      highlightText(containerRef.current, annotation.selectedText, annotation.id);
+      highlightText(
+        containerRef.current,
+        annotation.selectedText,
+        annotation.id,
+        annotation.positionHint?.startOffset,
+      );
 
       // Find the highlight span we just inserted
       const highlightSpan: Element | null = containerRef.current.querySelector(
@@ -243,7 +262,66 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   );
 }
 
-function highlightText(container: HTMLElement, text: string, annotationId: string) {
+function getRangeOffsets(container: HTMLElement, range: Range, skipSelector: string) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let fullText = '';
+  let start = -1;
+  let end = -1;
+  let node: Node | null;
+
+  while ((node = walker.nextNode())) {
+    const textNode = node as Text;
+    if (textNode.parentElement?.closest(skipSelector)) continue;
+
+    const nodeText = textNode.textContent || '';
+    const base = fullText.length;
+    fullText += nodeText;
+
+    if (textNode === range.startContainer) {
+      start = base + range.startOffset;
+    }
+    if (textNode === range.endContainer) {
+      end = base + range.endOffset;
+    }
+  }
+
+  if (start < 0 || end < 0) {
+    const fallbackStart = fullText.indexOf(range.toString());
+    if (fallbackStart >= 0) {
+      return {
+        fullText,
+        start: fallbackStart,
+        end: fallbackStart + range.toString().length,
+      };
+    }
+    return { fullText, start: 0, end: 0 };
+  }
+
+  return { fullText, start, end };
+}
+
+function findBestMatchIndex(haystack: string, needle: string, preferredStart?: number) {
+  if (!needle) return -1;
+  if (typeof preferredStart === 'number' && preferredStart >= 0) {
+    if (haystack.slice(preferredStart, preferredStart + needle.length) === needle) {
+      return preferredStart;
+    }
+
+    const forward = haystack.indexOf(needle, preferredStart);
+    const backward = haystack.lastIndexOf(needle, preferredStart);
+
+    if (forward === -1) return backward;
+    if (backward === -1) return forward;
+
+    return Math.abs(forward - preferredStart) < Math.abs(preferredStart - backward)
+      ? forward
+      : backward;
+  }
+
+  return haystack.indexOf(needle);
+}
+
+function highlightText(container: HTMLElement, text: string, annotationId: string, preferredStart?: number) {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   let node: Node | null;
@@ -262,7 +340,7 @@ function highlightText(container: HTMLElement, text: string, annotationId: strin
     nodeRanges.push({ node: tn, start: prevLen, end: accumulated.length });
   }
 
-  const idx = accumulated.indexOf(text);
+  const idx = findBestMatchIndex(accumulated, text, preferredStart);
   if (idx === -1) return;
 
   const targetStart = idx;
