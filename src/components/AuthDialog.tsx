@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuthStore } from '@/stores';
 import { X, Mail, Lock, Loader2, LogIn, UserPlus } from 'lucide-react';
 
@@ -57,7 +58,7 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
@@ -201,5 +202,5 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }

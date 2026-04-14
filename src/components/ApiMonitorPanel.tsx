@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, RefreshCw, Trash2, BarChart2 } from 'lucide-react';
 import { getAllApiUsage, clearApiUsage } from '@/lib/db';
 import type { ApiUsageRecord } from '@/types';
@@ -108,7 +109,7 @@ export function ApiMonitorPanel({ open, onClose }: ApiMonitorPanelProps) {
   const barGap = 3;
   const totalBars = days.length;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.4)' }}
@@ -412,5 +413,5 @@ export function ApiMonitorPanel({ open, onClose }: ApiMonitorPanelProps) {
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }
