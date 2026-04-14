@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, GitBranch, Loader2, CheckCircle, AlertCircle, FolderOpen } from 'lucide-react';
+import { X, GitBranch, Loader2, CheckCircle, AlertCircle, FolderOpen, Plus, Trash2 } from 'lucide-react';
 import { useGitHubSyncStore } from '@/stores';
 import { listRepos, pushFile, toFilename } from '@/lib/github';
 import type { GitHubConfig } from '@/lib/github';
@@ -32,6 +32,7 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
   const [filename, setFilename] = useState('');
   const [date, setDate] = useState(todayString());
   const [commitMsg, setCommitMsg] = useState('');
+  const [customFields, setCustomFields] = useState<{ key: string; value: string }[]>([]);
 
   // Status
   const [syncing, setSyncingLocal] = useState(false);
@@ -51,6 +52,7 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
       setCommitMsg(`Update ${title} via MarginLens`);
       setStatus('idle');
       setErrorMsg('');
+      setCustomFields([]);
     }
   }, [open, config, title]);
 
@@ -97,7 +99,11 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
       };
 
       // Build content with frontmatter
-      const frontmatter = `---\ndate: ${date}\n---\n\n`;
+      const extraLines = customFields
+        .filter(f => f.key.trim())
+        .map(f => `${f.key.trim()}: ${f.value}`)
+        .join('\n');
+      const frontmatter = `---\ndate: ${date}${extraLines ? '\n' + extraLines : ''}\n---\n\n`;
       const finalContent = frontmatter + content;
 
       await pushFile(ghConfig, filename.trim(), finalContent, commitMsg || `Update ${title} via MarginLens`);
@@ -255,6 +261,56 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
             </Field>
           </div>
 
+          {/* Custom frontmatter fields */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                自定义 Frontmatter 字段
+              </label>
+              <button
+                type="button"
+                onClick={() => setCustomFields(f => [...f, { key: '', value: '' }])}
+                className="flex items-center gap-0.5 text-[10.5px] px-1.5 py-0.5 rounded transition-colors"
+                style={{ color: 'var(--color-primary)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-primary-light)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <Plus size={11} /> 添加字段
+              </button>
+            </div>
+            {customFields.map((field, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={field.key}
+                  onChange={(e) => setCustomFields(f => f.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}
+                  placeholder="字段名"
+                  className="mac-input"
+                  style={{ fontSize: 11.5, padding: '4px 7px', width: 110, flexShrink: 0 }}
+                />
+                <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>:</span>
+                <input
+                  type="text"
+                  value={field.value}
+                  onChange={(e) => setCustomFields(f => f.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
+                  placeholder="值"
+                  className="mac-input flex-1"
+                  style={{ fontSize: 11.5, padding: '4px 7px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setCustomFields(f => f.filter((_, j) => j !== i))}
+                  className="p-1 rounded flex-shrink-0"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-danger)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+
           {/* Frontmatter preview */}
           <div className="space-y-1">
             <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
@@ -268,7 +324,7 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
                 border: '1px solid var(--color-border)',
               }}
             >
-              {`---\ndate: ${date}\n---`}
+              {['---', `date: ${date}`, ...customFields.filter(f => f.key.trim()).map(f => `${f.key.trim()}: ${f.value}`), '---'].join('\n')}
             </pre>
           </div>
 
