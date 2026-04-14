@@ -269,10 +269,32 @@ body {
   color: var(--color-text-secondary);
 }
 .inline-annotation-body {
-  max-height: 200px;
+  min-height: 120px;
   overflow-y: auto;
   padding: 10px 12px;
   line-height: 1.6;
+}
+.inline-annotation-resizer {
+  height: 12px;
+  cursor: ns-resize;
+  position: relative;
+  border-top: 1px solid var(--color-annotation-border);
+  background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.04));
+}
+.inline-annotation-resizer::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--color-border-strong);
+  opacity: 0.6;
+}
+.inline-annotation-resizer:hover::before {
+  opacity: 1;
 }
 .inline-annotation-body .markdown-body {
   font-size: 13px;

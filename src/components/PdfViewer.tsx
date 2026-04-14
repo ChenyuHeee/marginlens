@@ -251,11 +251,31 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       .join('');
 
     for (const ann of docAnnotations) {
-      const preferredStart = ann.positionHint?.paragraphIndex === _pageNum
-        ? ann.positionHint.startOffset
-        : undefined;
-      const idx = findBestMatchIndex(fullText, ann.selectedText, preferredStart);
-      if (idx === -1) continue;
+      let targetStart = -1;
+      let targetEnd = -1;
+      const hasPreferredRange =
+        ann.positionHint?.paragraphIndex === _pageNum &&
+        typeof ann.positionHint.startOffset === 'number' &&
+        typeof ann.positionHint.endOffset === 'number' &&
+        ann.positionHint.startOffset >= 0 &&
+        ann.positionHint.endOffset > ann.positionHint.startOffset;
+
+      if (hasPreferredRange) {
+        targetStart = ann.positionHint!.startOffset;
+        targetEnd = ann.positionHint!.endOffset;
+      } else {
+        const preferredStart = ann.positionHint?.paragraphIndex === _pageNum
+          ? ann.positionHint.startOffset
+          : undefined;
+        const idx = findBestMatchIndex(fullText, ann.selectedText, preferredStart);
+        if (idx === -1) continue;
+        targetStart = idx;
+        targetEnd = idx + ann.selectedText.length;
+      }
+
+      if (targetStart < 0 || targetEnd <= targetStart) continue;
+      if (targetStart >= fullText.length) continue;
+      targetEnd = Math.min(targetEnd, fullText.length);
 
       let charCount = 0;
       for (const span of spans) {
@@ -265,8 +285,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         charCount = spanEnd;
 
         // Check overlap with annotation
-        const highlightStart = Math.max(idx, spanStart);
-        const highlightEnd = Math.min(idx + ann.selectedText.length, spanEnd);
+        const highlightStart = Math.max(targetStart, spanStart);
+        const highlightEnd = Math.min(targetEnd, spanEnd);
 
         if (highlightStart < highlightEnd) {
           span.classList.add('pdf-annotation-highlight');

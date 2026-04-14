@@ -24,9 +24,23 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
   const [inlineQuestion, setInlineQuestion] = useState('');
   const [inlineAnswer, setInlineAnswer] = useState('');
   const [inlineStreaming, setInlineStreaming] = useState(false);
+  const [bodyHeight, setBodyHeight] = useState(200);
+  const [resizing, setResizing] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const resizeStartYRef = useRef(0);
+  const resizeStartHeightRef = useRef(200);
   const isActive = activeAnnotationId === annotation.id;
+
+  const MIN_BODY_HEIGHT = 120;
+  const MAX_BODY_HEIGHT = 560;
+
+  const scrollBodyToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (!bodyRef.current) return;
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    });
+  }, []);
 
   // Auto-expand and scroll into view when activated externally (e.g. clicking highlight)
   useEffect(() => {
@@ -101,6 +115,9 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
 
     setInlineStreaming(true);
     setInlineAnswer('');
+    setCollapsed(false);
+    setActiveAnnotation(annotation.id);
+    scrollBodyToBottom();
 
     const controller = new AbortController();
     let fullContent = '';
@@ -111,6 +128,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
         onToken: (token) => {
           fullContent += token;
           setInlineAnswer(fullContent);
+          scrollBodyToBottom();
         },
         onDone: () => {
           setInlineStreaming(false);
@@ -123,15 +141,61 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
           setInlineQuestion('');
           setInlineAnswer('');
           setAskingInline(false);
+          scrollBodyToBottom();
         },
         onError: (error) => {
           setInlineAnswer(fullContent + `\n\n⚠️ 错误: ${error.message}`);
           setInlineStreaming(false);
+          scrollBodyToBottom();
         },
       },
       controller.signal,
     );
   };
+
+  useEffect(() => {
+    if (collapsed) return;
+    if (!inlineStreaming && !inlineAnswer && !annotation.llmResponse) return;
+    scrollBodyToBottom();
+  }, [annotation.llmResponse, inlineAnswer, inlineStreaming, collapsed, scrollBodyToBottom]);
+
+  useEffect(() => {
+    if (!resizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientY - resizeStartYRef.current;
+      const nextHeight = resizeStartHeightRef.current + delta;
+      const maxAllowed = Math.min(MAX_BODY_HEIGHT, Math.floor(window.innerHeight * 0.7));
+      setBodyHeight(Math.max(MIN_BODY_HEIGHT, Math.min(maxAllowed, nextHeight)));
+    };
+
+    const handleMouseUp = () => {
+      setResizing(false);
+      window.document.body.style.cursor = '';
+      window.document.body.style.userSelect = '';
+    };
+
+    window.document.addEventListener('mousemove', handleMouseMove);
+    window.document.addEventListener('mouseup', handleMouseUp);
+    window.document.body.style.cursor = 'ns-resize';
+    window.document.body.style.userSelect = 'none';
+
+    return () => {
+      window.document.removeEventListener('mousemove', handleMouseMove);
+      window.document.removeEventListener('mouseup', handleMouseUp);
+      window.document.body.style.cursor = '';
+      window.document.body.style.userSelect = '';
+    };
+  }, [resizing]);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeStartYRef.current = e.clientY;
+    resizeStartHeightRef.current = bodyRef.current?.offsetHeight || bodyHeight;
+    setCollapsed(false);
+    setResizing(true);
+  }, [bodyHeight]);
 
   return (
     <div
@@ -174,113 +238,121 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
 
       {/* Body - expandable, scrollable, supports text selection */}
       {!collapsed && (
-        <div
-          ref={bodyRef}
-          className="inline-annotation-body"
-          onMouseUp={handleBodyMouseUp}
-        >
-          {/* User comment section */}
-          {editing ? (
-            <div className="mb-2">
-              <textarea
-                value={editComment}
-                onChange={(e) => setEditComment(e.target.value)}
-                className="mac-input"
-                style={{ minHeight: 60, resize: 'vertical', fontSize: 12 }}
-                placeholder="写下你的笔记..."
-                onMouseUp={(e) => e.stopPropagation()}
-              />
-              <div className="flex gap-1 mt-1.5">
-                <button onClick={handleSave} className="mac-btn mac-btn-primary" style={{ padding: '3px 10px' }}>
-                  <Check size={11} /> 保存
-                </button>
-                <button onClick={handleCancel} className="mac-btn" style={{ padding: '3px 10px' }}>
-                  <X size={11} /> 取消
-                </button>
+        <>
+          <div
+            ref={bodyRef}
+            className="inline-annotation-body"
+            style={{ height: `${bodyHeight}px` }}
+            onMouseUp={handleBodyMouseUp}
+          >
+            {/* User comment section */}
+            {editing ? (
+              <div className="mb-2">
+                <textarea
+                  value={editComment}
+                  onChange={(e) => setEditComment(e.target.value)}
+                  className="mac-input"
+                  style={{ minHeight: 60, resize: 'vertical', fontSize: 12 }}
+                  placeholder="写下你的笔记..."
+                  onMouseUp={(e) => e.stopPropagation()}
+                />
+                <div className="flex gap-1 mt-1.5">
+                  <button onClick={handleSave} className="mac-btn mac-btn-primary" style={{ padding: '3px 10px' }}>
+                    <Check size={11} /> 保存
+                  </button>
+                  <button onClick={handleCancel} className="mac-btn" style={{ padding: '3px 10px' }}>
+                    <X size={11} /> 取消
+                  </button>
+                </div>
               </div>
-            </div>
-          ) : (
-            annotation.comment && (
-              <div className="mb-2 text-xs px-1 py-0.5 rounded" style={{ color: 'var(--color-text)', background: 'var(--color-primary-light)' }}>
-                📝 {annotation.comment}
-              </div>
-            )
-          )}
+            ) : (
+              annotation.comment && (
+                <div className="mb-2 text-xs px-1 py-0.5 rounded" style={{ color: 'var(--color-text)', background: 'var(--color-primary-light)' }}>
+                  📝 {annotation.comment}
+                </div>
+              )
+            )}
 
-          {/* LLM response - rendered as scrollable markdown */}
-          {annotation.llmResponse && (
-            <div className="markdown-body">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {annotation.llmResponse}
-              </ReactMarkdown>
-            </div>
-          )}
-
-          {/* Inline streaming answer */}
-          {inlineAnswer && (
-            <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-              <div className={`markdown-body ${inlineStreaming ? 'streaming-cursor' : ''}`}>
+            {/* LLM response - rendered as scrollable markdown */}
+            {annotation.llmResponse && (
+              <div className="markdown-body">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {inlineAnswer}
+                  {annotation.llmResponse}
                 </ReactMarkdown>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Action bar: add note / ask follow-up */}
-          <div className="flex items-center gap-1 mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-            {!annotation.comment && !editing && (
+            {/* Inline streaming answer */}
+            {inlineAnswer && (
+              <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+                <div className={`markdown-body ${inlineStreaming ? 'streaming-cursor' : ''}`}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                    {inlineAnswer}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+
+            {/* Action bar: add note / ask follow-up */}
+            <div className="flex items-center gap-1 mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+              {!annotation.comment && !editing && (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="mac-btn"
+                  style={{ fontSize: 10, padding: '2px 8px' }}
+                >
+                  <Edit3 size={9} /> 添加笔记
+                </button>
+              )}
               <button
-                onClick={() => setEditing(true)}
+                onClick={() => setAskingInline(!askingInline)}
                 className="mac-btn"
                 style={{ fontSize: 10, padding: '2px 8px' }}
               >
-                <Edit3 size={9} /> 添加笔记
+                <Sparkles size={9} /> 追问
               </button>
+            </div>
+
+            {/* Inline question input */}
+            {askingInline && (
+              <div className="flex items-center gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="text"
+                  placeholder="对这条批注追问..."
+                  value={inlineQuestion}
+                  onChange={(e) => setInlineQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleInlineAsk(); }
+                    if (e.key === 'Escape') setAskingInline(false);
+                  }}
+                  onMouseUp={(e) => e.stopPropagation()}
+                  className="mac-input"
+                  style={{ fontSize: 11 }}
+                />
+                <button
+                  onClick={handleInlineAsk}
+                  disabled={!inlineQuestion.trim() || inlineStreaming}
+                  className="mac-btn mac-btn-primary disabled:opacity-30"
+                  style={{ padding: '4px 8px', fontSize: 10 }}
+                >
+                  发送
+                </button>
+              </div>
             )}
-            <button
-              onClick={() => setAskingInline(!askingInline)}
-              className="mac-btn"
-              style={{ fontSize: 10, padding: '2px 8px' }}
-            >
-              <Sparkles size={9} /> 追问
-            </button>
+
+            {/* Empty state */}
+            {!annotation.comment && !annotation.llmResponse && !editing && (
+              <div className="text-center py-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                点击「添加笔记」或「追问」开始
+              </div>
+            )}
           </div>
-
-          {/* Inline question input */}
-          {askingInline && (
-            <div className="flex items-center gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="text"
-                placeholder="对这条批注追问..."
-                value={inlineQuestion}
-                onChange={(e) => setInlineQuestion(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleInlineAsk(); }
-                  if (e.key === 'Escape') setAskingInline(false);
-                }}
-                onMouseUp={(e) => e.stopPropagation()}
-                className="mac-input"
-                style={{ fontSize: 11 }}
-              />
-              <button
-                onClick={handleInlineAsk}
-                disabled={!inlineQuestion.trim() || inlineStreaming}
-                className="mac-btn mac-btn-primary disabled:opacity-30"
-                style={{ padding: '4px 8px', fontSize: 10 }}
-              >
-                发送
-              </button>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!annotation.comment && !annotation.llmResponse && !editing && (
-            <div className="text-center py-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              点击「添加笔记」或「追问」开始
-            </div>
-          )}
-        </div>
+          <div
+            className="inline-annotation-resizer"
+            onMouseDown={handleResizeStart}
+            title="拖拽调整批注高度"
+          />
+        </>
       )}
     </div>
   );

@@ -158,6 +158,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
         annotation.selectedText,
         annotation.id,
         annotation.positionHint?.startOffset,
+          annotation.positionHint?.endOffset,
       );
 
       // Find the highlight span we just inserted
@@ -321,7 +322,13 @@ function findBestMatchIndex(haystack: string, needle: string, preferredStart?: n
   return haystack.indexOf(needle);
 }
 
-function highlightText(container: HTMLElement, text: string, annotationId: string, preferredStart?: number) {
+function highlightText(
+  container: HTMLElement,
+  text: string,
+  annotationId: string,
+  preferredStart?: number,
+  preferredEnd?: number,
+) {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   let node: Node | null;
@@ -340,11 +347,28 @@ function highlightText(container: HTMLElement, text: string, annotationId: strin
     nodeRanges.push({ node: tn, start: prevLen, end: accumulated.length });
   }
 
-  const idx = findBestMatchIndex(accumulated, text, preferredStart);
-  if (idx === -1) return;
+  let targetStart = -1;
+  let targetEnd = -1;
 
-  const targetStart = idx;
-  const targetEnd = idx + text.length;
+  const hasPreferredRange =
+    typeof preferredStart === 'number' &&
+    typeof preferredEnd === 'number' &&
+    preferredStart >= 0 &&
+    preferredEnd > preferredStart;
+
+  if (hasPreferredRange) {
+    targetStart = preferredStart;
+    targetEnd = preferredEnd;
+  } else {
+    const idx = findBestMatchIndex(accumulated, text, preferredStart);
+    if (idx === -1) return;
+    targetStart = idx;
+    targetEnd = idx + text.length;
+  }
+
+  if (targetStart < 0 || targetEnd <= targetStart) return;
+  if (targetStart >= accumulated.length) return;
+  targetEnd = Math.min(targetEnd, accumulated.length);
 
   for (const nr of nodeRanges) {
     if (nr.end <= targetStart || nr.start >= targetEnd) continue;
