@@ -24,15 +24,15 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
   const [inlineQuestion, setInlineQuestion] = useState('');
   const [inlineAnswer, setInlineAnswer] = useState('');
   const [inlineStreaming, setInlineStreaming] = useState(false);
-  const [bodyHeight, setBodyHeight] = useState(200);
+  const [bodyHeight, setBodyHeight] = useState<number | null>(null);
   const [resizing, setResizing] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const resizeStartYRef = useRef(0);
-  const resizeStartHeightRef = useRef(200);
+  const resizeStartHeightRef = useRef(0);
   const isActive = activeAnnotationId === annotation.id;
 
-  const MIN_BODY_HEIGHT = 120;
+  const MIN_BODY_HEIGHT = 60;
   const MAX_BODY_HEIGHT = 560;
 
   const scrollBodyToBottom = useCallback(() => {
@@ -192,7 +192,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
     e.preventDefault();
     e.stopPropagation();
     resizeStartYRef.current = e.clientY;
-    resizeStartHeightRef.current = bodyRef.current?.offsetHeight || bodyHeight;
+    resizeStartHeightRef.current = bodyRef.current?.offsetHeight || bodyHeight || 200;
     setCollapsed(false);
     setResizing(true);
   }, [bodyHeight]);
@@ -242,7 +242,11 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
           <div
             ref={bodyRef}
             className="inline-annotation-body"
-            style={{ height: `${bodyHeight}px` }}
+            style={
+              bodyHeight !== null
+                ? { height: `${bodyHeight}px`, maxHeight: `${MAX_BODY_HEIGHT}px` }
+                : { maxHeight: `${MAX_BODY_HEIGHT}px` }
+            }
             onMouseUp={handleBodyMouseUp}
           >
             {/* User comment section */}

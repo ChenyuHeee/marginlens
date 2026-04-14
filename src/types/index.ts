@@ -41,6 +41,12 @@ export interface ChatMessage {
   hiddenContext?: string;
   /** The selected text that triggered this message */
   selectedText?: string;
+  /** Position hint for anchoring annotations back to the correct occurrence */
+  positionHint?: {
+    paragraphIndex: number;
+    startOffset: number;
+    endOffset: number;
+  };
   timestamp: number;
   /** Whether the message is currently streaming */
   isStreaming?: boolean;

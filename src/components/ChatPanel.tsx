@@ -126,10 +126,15 @@ export function ChatPanel() {
     );
   };
 
-  const handlePinAsAnnotation = (content: string, selectedText?: string, userQuestion?: string) => {
+  const handlePinAsAnnotation = async (
+    content: string,
+    selectedText?: string,
+    userQuestion?: string,
+    positionHint?: { paragraphIndex: number; startOffset: number; endOffset: number },
+  ) => {
     if (!activeDocument) return;
     const title = userQuestion || selectedText || '批注';
-    addAnnotation({
+    const annotation = await addAnnotation({
       documentId: activeDocument.id,
       selectedText: selectedText || title,
       contextBefore: '',
@@ -137,7 +142,9 @@ export function ChatPanel() {
       comment: userQuestion && selectedText ? `Q: ${userQuestion}` : '',
       llmResponse: content,
       color: '#fef08a',
+      positionHint,
     });
+    useAnnotationStore.getState().setActiveAnnotation(annotation.id);
     setRightPanelTab('annotations');
   };
 
@@ -266,7 +273,7 @@ export function ChatPanel() {
                 return (
                   <div className="mt-2 pt-1.5 flex justify-end" style={{ borderTop: '1px solid var(--color-border)' }}>
                     <button
-                      onClick={() => handlePinAsAnnotation(msg.content, prevUserMsg?.selectedText, prevUserMsg?.content)}
+                      onClick={() => handlePinAsAnnotation(msg.content, prevUserMsg?.selectedText, prevUserMsg?.content, prevUserMsg?.positionHint)}
                       className="flex items-center gap-1 text-[10px] font-medium opacity-40 hover:opacity-80 transition-opacity"
                       title="钉为批注"
                       style={{ color: 'var(--color-primary)' }}

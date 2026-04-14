@@ -72,6 +72,11 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       content: prompt,
       hiddenContext: hiddenContext || undefined,
       selectedText,
+      positionHint: {
+        paragraphIndex: selection.paragraphIndex,
+        startOffset: selection.startOffset,
+        endOffset: selection.endOffset,
+      },
     });
 
     const provider = useSettingsStore.getState().getActiveProvider();

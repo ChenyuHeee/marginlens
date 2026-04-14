@@ -53,18 +53,27 @@ export function Sidebar() {
 
   if (!sidebarOpen) {
     return (
-      <button
-        onClick={toggleSidebar}
-        className="fixed left-3 top-3 z-20 p-2 rounded-xl transition-all"
+      <div
+        className="h-full flex-shrink-0 flex flex-col items-center pt-2.5"
         style={{
-          background: 'var(--color-bg-elevated)',
-          border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-md)',
+          width: 40,
+          borderRight: '1px solid var(--color-border)',
+          background: 'var(--color-bg-sidebar)',
         }}
-        title="打开侧栏"
       >
-        <PanelLeft size={15} style={{ color: 'var(--color-text-secondary)' }} />
-      </button>
+        <button
+          onClick={toggleSidebar}
+          className="p-2 rounded-lg transition-all"
+          style={{
+            background: 'transparent',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          title="打开侧栏"
+        >
+          <PanelLeft size={15} style={{ color: 'var(--color-text-secondary)' }} />
+        </button>
+      </div>
     );
   }
 
