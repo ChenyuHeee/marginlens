@@ -91,10 +91,8 @@ export async function streamChat(
               totalTokens: json.usage.total_tokens ?? 0,
             });
           }
-          if (json.choices?.[0]?.finish_reason) {
-            callbacks.onDone();
-            return;
-          }
+          // Do NOT return on finish_reason — the usage chunk arrives AFTER it,
+          // before the [DONE] sentinel. Let [DONE] be the sole termination signal.
         } catch {
           // skip malformed JSON lines
         }
