@@ -130,6 +130,16 @@ export async function getAllApiUsage(): Promise<ApiUsageRecord[]> {
   return records.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export async function getApiUsageById(id: string): Promise<ApiUsageRecord | undefined> {
+  const db = await getDB();
+  return db.get('apiUsage', id);
+}
+
+export async function saveApiUsageRecord(record: ApiUsageRecord): Promise<void> {
+  const db = await getDB();
+  await db.put('apiUsage', record);
+}
+
 /** Accumulate token usage into the appropriate daily record. */
 export async function recordApiUsage(
   date: string,

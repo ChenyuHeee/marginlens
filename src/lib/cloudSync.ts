@@ -4,7 +4,7 @@
  */
 import { getSupabase } from './supabase';
 import * as db from './db';
-import type { Document, Annotation, ChatSession, AppSettings } from '@/types';
+import type { Document, Annotation, ChatSession, AppSettings, ApiUsageRecord } from '@/types';
 
 // ─── Push: local → cloud ───
 
@@ -252,9 +252,70 @@ export async function pullSettings(userId: string): Promise<boolean> {
 
 // ─── Full sync ───
 
+// ─── API Usage sync ───
+
+export async function pushApiUsage(userId: string): Promise<number> {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+
+  const records = await db.getAllApiUsage();
+  if (records.length === 0) return 0;
+
+  const rows = records.map((r) => ({
+    id: r.id,
+    user_id: userId,
+    date: r.date,
+    provider_id: r.providerId,
+    provider_name: r.providerName,
+    model: r.model,
+    prompt_tokens: r.promptTokens,
+    completion_tokens: r.completionTokens,
+    total_tokens: r.totalTokens,
+    calls: r.calls,
+  }));
+
+  const { error } = await supabase
+    .from('api_usage')
+    .upsert(rows, { onConflict: 'id' });
+  if (error) throw new Error(`Push api_usage failed: ${error.message}`);
+  return rows.length;
+}
+
+export async function pullApiUsage(userId: string): Promise<number> {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+
+  const { data, error } = await supabase
+    .from('api_usage')
+    .select('*')
+    .eq('user_id', userId);
+  if (error) throw new Error(`Pull api_usage failed: ${error.message}`);
+  if (!data || data.length === 0) return 0;
+
+  let count = 0;
+  for (const row of data) {
+    const local = await db.getApiUsageById(row.id);
+    // Merge: take max to avoid double-counting if both sides recorded
+    const merged: ApiUsageRecord = {
+      id: row.id,
+      date: row.date,
+      providerId: row.provider_id,
+      providerName: row.provider_name,
+      model: row.model,
+      promptTokens: Math.max(row.prompt_tokens, local?.promptTokens ?? 0),
+      completionTokens: Math.max(row.completion_tokens, local?.completionTokens ?? 0),
+      totalTokens: Math.max(row.total_tokens, local?.totalTokens ?? 0),
+      calls: Math.max(row.calls, local?.calls ?? 0),
+    };
+    await db.saveApiUsageRecord(merged);
+    count++;
+  }
+  return count;
+}
+
 export interface SyncResult {
-  pushed: { documents: number; annotations: number; chatSessions: number; settings: boolean };
-  pulled: { documents: number; annotations: number; chatSessions: number; settings: boolean };
+  pushed: { documents: number; annotations: number; chatSessions: number; settings: boolean; apiUsage: number };
+  pulled: { documents: number; annotations: number; chatSessions: number; settings: boolean; apiUsage: number };
 }
 
 export async function fullSync(userId: string): Promise<SyncResult> {
@@ -264,6 +325,7 @@ export async function fullSync(userId: string): Promise<SyncResult> {
     annotations: await pullAnnotations(userId),
     chatSessions: await pullChatSessions(userId),
     settings: await pullSettings(userId),
+    apiUsage: await pullApiUsage(userId),
   };
 
   const pushed = {
@@ -271,6 +333,7 @@ export async function fullSync(userId: string): Promise<SyncResult> {
     annotations: await pushAnnotations(userId),
     chatSessions: await pushChatSessions(userId),
     settings: (await pushSettings(userId), true),
+    apiUsage: await pushApiUsage(userId),
   };
 
   return { pushed, pulled };

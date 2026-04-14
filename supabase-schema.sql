@@ -85,3 +85,28 @@ create policy "Users can manage own settings"
   on public.user_settings for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- ─── API Usage ───
+create table if not exists public.api_usage (
+  -- composite key: '{YYYY-MM-DD}__{provider_id}'
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null,
+  provider_id text not null,
+  provider_name text not null,
+  model text not null default '',
+  prompt_tokens integer not null default 0,
+  completion_tokens integer not null default 0,
+  total_tokens integer not null default 0,
+  calls integer not null default 0
+);
+
+alter table public.api_usage enable row level security;
+
+create policy "Users can manage own api_usage"
+  on public.api_usage for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists idx_api_usage_user on public.api_usage(user_id);
+create index if not exists idx_api_usage_date on public.api_usage(user_id, date);
