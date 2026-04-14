@@ -20,10 +20,12 @@ import {
   Pencil,
   Check,
   ArrowUpDown,
+  BarChart2,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthDialog } from './AuthDialog';
+import { ApiMonitorPanel } from './ApiMonitorPanel';
 
 type SortKey = 'updatedAt' | 'title' | 'type' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -49,6 +51,7 @@ export function Sidebar() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
+  const [monitorOpen, setMonitorOpen] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>(loadSort);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -521,6 +524,21 @@ export function Sidebar() {
         )}
       </div>
 
+      {/* API Monitor button */}
+      <div
+        className="px-3 py-2 flex-shrink-0"
+        style={{ borderTop: '1px solid var(--color-border)' }}
+      >
+        <button
+          onClick={() => setMonitorOpen(true)}
+          className="mac-btn w-full justify-center gap-1.5"
+          style={{ fontSize: 11, padding: '5px 0', borderRadius: 'var(--radius-sm)' }}
+        >
+          <BarChart2 size={12} />
+          API 用量监控
+        </button>
+      </div>
+
       {/* User / Auth section */}
       {isSupabaseConfigured() && (
         <div
@@ -584,6 +602,7 @@ export function Sidebar() {
       )}
 
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
+      <ApiMonitorPanel open={monitorOpen} onClose={() => setMonitorOpen(false)} />
     </div>
   );
 }

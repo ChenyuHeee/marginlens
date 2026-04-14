@@ -22,6 +22,7 @@ import {
 } from '@/stores';
 import { buildSystemMessage } from '@/lib/context';
 import { streamChat } from '@/lib/llm';
+import { recordApiUsage } from '@/lib/db';
 
 export function ChatPanel() {
   const {
@@ -104,6 +105,7 @@ export function ChatPanel() {
     }));
 
     let fullContent = '';
+    const today = new Date().toISOString().slice(0, 10);
     await streamChat(
       provider,
       apiMessages,
@@ -120,6 +122,9 @@ export function ChatPanel() {
           updateLastMessage(fullContent + `\n\n⚠️ 错误: ${error.message}`);
           setStreaming(false);
           saveActiveSession();
+        },
+        onUsage: ({ promptTokens, completionTokens }) => {
+          recordApiUsage(today, provider.id, provider.name, provider.model, promptTokens, completionTokens);
         },
       },
       controller.signal,

@@ -4,6 +4,8 @@ export interface StreamCallbacks {
   onToken: (token: string) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+  /** Called once when the API reports actual token counts */
+  onUsage?: (usage: { promptTokens: number; completionTokens: number; totalTokens: number }) => void;
 }
 
 export async function streamChat(
@@ -23,6 +25,7 @@ export async function streamChat(
     max_tokens: maxTokens,
     temperature,
     stream: true,
+    stream_options: { include_usage: true },
   };
 
   let response: Response;
@@ -80,6 +83,13 @@ export async function streamChat(
           const delta = json.choices?.[0]?.delta?.content;
           if (delta) {
             callbacks.onToken(delta);
+          }
+          if (json.usage) {
+            callbacks.onUsage?.({
+              promptTokens: json.usage.prompt_tokens ?? 0,
+              completionTokens: json.usage.completion_tokens ?? 0,
+              totalTokens: json.usage.total_tokens ?? 0,
+            });
           }
           if (json.choices?.[0]?.finish_reason) {
             callbacks.onDone();

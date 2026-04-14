@@ -7,6 +7,7 @@ import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight, MessageSquare, Spar
 import { useAnnotationStore, useSelectionStore, useSettingsStore, useDocumentStore, useUIStore } from '@/stores';
 import { buildSystemMessage } from '@/lib/context';
 import { streamChat } from '@/lib/llm';
+import { recordApiUsage } from '@/lib/db';
 import type { Annotation, SelectionInfo } from '@/types';
 
 interface InlineAnnotationProps {
@@ -120,6 +121,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
     scrollBodyToBottom();
 
     const controller = new AbortController();
+    const today = new Date().toISOString().slice(0, 10);
     let fullContent = '';
     await streamChat(
       provider,
@@ -129,6 +131,9 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
           fullContent += token;
           setInlineAnswer(fullContent);
           scrollBodyToBottom();
+        },
+        onUsage: ({ promptTokens, completionTokens }) => {
+          recordApiUsage(today, provider.id, provider.name, provider.model, promptTokens, completionTokens);
         },
         onDone: () => {
           setInlineStreaming(false);

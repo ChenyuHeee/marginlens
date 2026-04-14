@@ -110,3 +110,17 @@ export interface GitHubSyncConfig {
   path: string;       // directory in repo, e.g. 'notes'
   username: string;    // authenticated GitHub username
 }
+
+/** One record per (date × provider). Accumulated in-place on each API call. */
+export interface ApiUsageRecord {
+  /** Composite key: `${YYYY-MM-DD}__${providerId}` */
+  id: string;
+  date: string;           // YYYY-MM-DD
+  providerId: string;
+  providerName: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  calls: number;
+}
