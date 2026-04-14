@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   FileText,
   Plus,
@@ -15,13 +15,29 @@ import {
   LogOut,
   RefreshCw,
   Cloud,
+  Pin,
+  PinOff,
+  Pencil,
+  Check,
+  ArrowUpDown,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthDialog } from './AuthDialog';
 
+type SortKey = 'updatedAt' | 'title' | 'type' | 'createdAt';
+type SortDir = 'asc' | 'desc';
+
+function loadSort(): { key: SortKey; dir: SortDir } {
+  try {
+    const s = localStorage.getItem('ml_sort');
+    if (s) return JSON.parse(s);
+  } catch { /* ignore */ }
+  return { key: 'updatedAt', dir: 'desc' };
+}
+
 export function Sidebar() {
-  const { documents, activeDocumentId, openDocument, addDocument, addDocumentFromText, removeDocument } = useDocumentStore();
+  const { documents, activeDocumentId, openDocument, addDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
@@ -33,9 +49,61 @@ export function Sidebar() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
-  const filteredDocs = documents.filter((d) =>
-    d.title.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>(loadSort);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Close sort menu on outside click
+  useEffect(() => {
+    if (!showSortMenu) return;
+    const close = () => setShowSortMenu(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [showSortMenu]);
+
+  const handleSort = (key: SortKey) => {
+    const next = sort.key === key
+      ? { key, dir: sort.dir === 'asc' ? 'desc' as SortDir : 'asc' as SortDir }
+      : { key, dir: key === 'title' ? 'asc' as SortDir : 'desc' as SortDir };
+    setSort(next);
+    localStorage.setItem('ml_sort', JSON.stringify(next));
+    setShowSortMenu(false);
+  };
+
+  const togglePin = async (e: React.MouseEvent, docId: string, pinned: boolean) => {
+    e.stopPropagation();
+    await updateDocument(docId, { pinnedAt: pinned ? 0 : Date.now() });
+  };
+
+  const startRename = (e: React.MouseEvent, docId: string, currentTitle: string) => {
+    e.stopPropagation();
+    setRenamingId(docId);
+    setRenameValue(currentTitle);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  };
+
+  const commitRename = async (docId: string) => {
+    const trimmed = renameValue.trim();
+    if (trimmed) await updateDocument(docId, { title: trimmed });
+    setRenamingId(null);
+  };
+
+  // Sort + filter
+  const sortedDocs = [...documents]
+    .filter((d) => d.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => {
+      const pinA = a.pinnedAt || 0;
+      const pinB = b.pinnedAt || 0;
+      if (pinA !== pinB) return pinB - pinA; // pinned first
+      const { key, dir } = sort;
+      let cmp = 0;
+      if (key === 'title') cmp = a.title.localeCompare(b.title, 'zh');
+      else if (key === 'type') cmp = a.type.localeCompare(b.type);
+      else cmp = (a[key] as number) - (b[key] as number);
+      return dir === 'asc' ? cmp : -cmp;
+    });
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files) return;
@@ -280,11 +348,48 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Section label */}
-      <div className="px-4 pt-1 pb-1">
+      {/* Section label + sort */}
+      <div className="px-3 pt-1 pb-1 flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
-          文档 ({filteredDocs.length})
+          文档 ({sortedDocs.length})
         </span>
+        <div className="relative">
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowSortMenu((v) => !v); }}
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] transition-colors"
+            style={{ color: 'var(--color-text-tertiary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            title="排序"
+          >
+            <ArrowUpDown size={10} />
+            {{updatedAt:'修改', createdAt:'创建', title:'名称', type:'类型'}[sort.key]}
+          </button>
+          {showSortMenu && (
+            <div
+              className="absolute right-0 top-full mt-1 w-32 rounded-lg shadow-lg z-50 overflow-hidden"
+              style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {([['updatedAt', '修改日期'], ['createdAt', '创建日期'], ['title', '名称'], ['type', '类型']] as [SortKey, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => handleSort(key)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[11px] transition-colors"
+                  style={{
+                    color: sort.key === key ? 'var(--color-primary)' : 'var(--color-text)',
+                    background: sort.key === key ? 'var(--color-primary-light)' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => { if (sort.key !== key) e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+                  onMouseLeave={(e) => { if (sort.key !== key) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {label}
+                  {sort.key === key && <span>{sort.dir === 'asc' ? '↑' : '↓'}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Document list */}
@@ -295,7 +400,7 @@ export function Sidebar() {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
       >
-        {filteredDocs.length === 0 ? (
+        {sortedDocs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
@@ -309,22 +414,18 @@ export function Sidebar() {
           </div>
         ) : (
           <div className="space-y-0.5">
-            {filteredDocs.map((doc) => {
+            {sortedDocs.map((doc) => {
               const isActive = activeDocumentId === doc.id;
+              const isPinned = !!doc.pinnedAt;
+              const isRenaming = renamingId === doc.id;
               return (
                 <div
                   key={doc.id}
-                  onClick={() => handleOpenDocument(doc.id)}
+                  onClick={() => !isRenaming && handleOpenDocument(doc.id)}
                   className="group flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-all"
-                  style={{
-                    background: isActive ? 'var(--color-primary-light)' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'var(--color-card-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'transparent';
-                  }}
+                  style={{ background: isActive ? 'var(--color-primary-light)' : 'transparent' }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                 >
                   <div
                     className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
@@ -336,26 +437,83 @@ export function Sidebar() {
                     <FileText size={12} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p
-                      className="text-[12px] font-medium truncate"
-                      style={{ color: isActive ? 'var(--color-primary)' : 'var(--color-text)' }}
-                    >
-                      {doc.title}
-                    </p>
-                    <p className="text-[10px] mt-px" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {doc.type === 'pdf' ? 'PDF' : 'MD'} · {formatFileSize(doc.fileSize)}
-                    </p>
+                    {isRenaming ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          ref={renameInputRef}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitRename(doc.id);
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          onBlur={() => commitRename(doc.id)}
+                          autoFocus
+                          className="mac-input flex-1 min-w-0"
+                          style={{ fontSize: 11.5, padding: '2px 5px', borderRadius: 'var(--radius-sm)' }}
+                        />
+                        <button
+                          onClick={() => commitRename(doc.id)}
+                          className="p-0.5 rounded flex-shrink-0"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          <Check size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <p
+                          className="text-[12px] font-medium truncate"
+                          style={{ color: isActive ? 'var(--color-primary)' : 'var(--color-text)' }}
+                        >
+                          {isPinned && <span className="mr-1" style={{ color: 'var(--color-primary)', fontSize: 9 }}>●</span>}
+                          {doc.title}
+                        </p>
+                        <p className="text-[10px] mt-px" style={{ color: 'var(--color-text-tertiary)' }}>
+                          {doc.type === 'pdf' ? 'PDF' : 'MD'} · {formatFileSize(doc.fileSize)}
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`删除 "${doc.title}"？`)) removeDocument(doc.id);
-                    }}
-                    className="p-1 rounded-md opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all"
-                    style={{ color: 'var(--color-danger)' }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
+
+                  {/* Action buttons (visible on hover) */}
+                  {!isRenaming && (
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={(e) => startRename(e, doc.id, doc.title)}
+                        className="p-1 rounded-md"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                        title="重命名"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      <button
+                        onClick={(e) => togglePin(e, doc.id, isPinned)}
+                        className="p-1 rounded-md"
+                        style={{ color: isPinned ? 'var(--color-primary)' : 'var(--color-text-tertiary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = isPinned ? 'var(--color-primary)' : 'var(--color-text-tertiary)'; }}
+                        title={isPinned ? '取消置顶' : '置顶'}
+                      >
+                        {isPinned ? <PinOff size={11} /> : <Pin size={11} />}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`删除 "${doc.title}"？`)) removeDocument(doc.id);
+                        }}
+                        className="p-1 rounded-md"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-danger)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                        title="删除"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

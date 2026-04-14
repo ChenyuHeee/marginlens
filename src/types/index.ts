@@ -10,6 +10,8 @@ export interface Document {
   fileSize: number;
   createdAt: number;
   updatedAt: number;
+  /** Non-zero timestamp means the document is pinned (higher = pinned later) */
+  pinnedAt?: number;
 }
 
 export interface Annotation {
