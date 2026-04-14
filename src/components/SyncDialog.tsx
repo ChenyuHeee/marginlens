@@ -148,7 +148,7 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
         >
           <div className="flex items-center gap-2">
             <GitBranch size={15} style={{ color: 'var(--color-primary)' }} />
-            <h2 className="text-[14px] font-semibold tracking-tight">同步到 GitHub</h2>
+            <h2 className="text-[14px] font-semibold tracking-tight">推送到 GitHub</h2>
           </div>
           <button
             onClick={onClose}
@@ -286,7 +286,7 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
             <div className="flex items-center gap-2 text-[12px] px-3 py-2 rounded-lg"
               style={{ color: 'var(--color-success, #34c759)', background: 'rgba(52,199,89,0.06)' }}>
               <CheckCircle size={13} />
-              已成功同步到 {selectedRepo}
+              已成功推送到 {selectedRepo}
             </div>
           )}
         </div>
@@ -317,7 +317,7 @@ export function SyncDialog({ open, onClose, content, title }: SyncDialogProps) {
               onMouseLeave={(e) => { e.currentTarget.style.opacity = (!selectedRepo || !filename.trim()) ? '0.5' : '1'; }}
             >
               {syncing ? <Loader2 size={12} className="animate-spin" /> : <GitBranch size={12} />}
-              {syncing ? '同步中...' : '同步'}
+              {syncing ? '推送中...' : '推送'}
             </button>
           )}
         </div>

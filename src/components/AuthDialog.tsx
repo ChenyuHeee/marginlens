@@ -80,7 +80,7 @@ export function AuthDialog({ open, onClose }: AuthDialogProps) {
               {mode === 'login' ? '登录' : '注册'}
             </h2>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-              登录后可自动同步文档和设置
+              登录后可自动备份文档和设置到云端
             </p>
           </div>
           <button

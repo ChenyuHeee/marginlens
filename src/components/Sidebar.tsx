@@ -557,16 +557,16 @@ export function Sidebar() {
                 style={{ fontSize: 10.5, padding: '5px 0', borderRadius: 'var(--radius-sm)', opacity: cloudSyncing ? 0.6 : 1 }}
               >
                 {cloudSyncing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                {cloudSyncing ? '同步中...' : '同步'}
+                {cloudSyncing ? '备份中...' : '云备份'}
               </button>
               {lastSyncedAt && (
                 <p className="text-[9.5px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
-                  上次同步: {new Date(lastSyncedAt).toLocaleTimeString()}
+                  上次备份: {new Date(lastSyncedAt).toLocaleTimeString()}
                 </p>
               )}
               {syncError && (
                 <p className="text-[9.5px] text-center" style={{ color: 'var(--color-danger)' }}>
-                  同步错误: {syncError}
+                  备份错误: {syncError}
                 </p>
               )}
             </div>
@@ -577,7 +577,7 @@ export function Sidebar() {
               style={{ fontSize: 11, padding: '6px 0', borderRadius: 'var(--radius-sm)' }}
             >
               <Cloud size={12} />
-              登录以同步
+              登录以开启云备份
             </button>
           )}
         </div>

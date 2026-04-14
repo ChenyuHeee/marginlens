@@ -19,7 +19,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     { id: 'providers' as const, label: 'API 配置' },
     { id: 'templates' as const, label: '提示模板' },
     { id: 'display' as const, label: '显示设置' },
-    { id: 'github' as const, label: 'GitHub 同步' },
+    { id: 'github' as const, label: 'GitHub 推送' },
   ];
 
   return (
@@ -483,11 +483,11 @@ function GitHubSettings() {
     <div className="space-y-5">
       <div className="flex items-center gap-2 mb-3">
         <GitFork size={16} style={{ color: 'var(--color-text)' }} />
-        <span className="text-[13px] font-medium">将笔记同步到 GitHub 仓库</span>
+        <span className="text-[13px] font-medium">将笔记推送到 GitHub 仓库</span>
       </div>
 
       <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-        配置 Token 后，在编辑器工具栏点击「同步」按钮，每次可选择目标仓库和路径。
+        配置 Token 后，在编辑器工具栏点击「推送」按钮，每次可选择目标仓库和路径。
       </p>
 
       {/* Current connection status */}

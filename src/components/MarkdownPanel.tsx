@@ -137,10 +137,10 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
               onClick={() => setSyncDialogOpen(true)}
               className="mac-btn flex items-center gap-1"
               style={{ fontSize: 11, padding: '3px 10px' }}
-              title="同步到 GitHub"
+              title="推送到 GitHub"
             >
               <GitBranch size={11} />
-              同步
+              推送
             </button>
           )}
         </div>
