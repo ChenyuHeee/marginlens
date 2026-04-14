@@ -222,7 +222,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
 
   return (
     <div className="relative h-full">
-      <div className="h-full overflow-y-auto px-10 py-8 lg:px-20" id="markdown-scroll-container" style={{ willChange: 'transform' }}>
+      <div className="h-full overflow-y-auto px-10 py-8 lg:px-20" id="markdown-scroll-container">
         <div
           ref={containerRef}
           className="markdown-body max-w-[780px]"
