@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { useSelectionStore, useSettingsStore, useUIStore } from '@/stores';
 import { streamChat } from '@/lib/llm';
 import { Languages, Loader2 } from 'lucide-react';
@@ -124,7 +126,7 @@ export function TranslatePanel() {
           </div>
           <div className="text-[12.5px] leading-relaxed markdown-body max-w-none" style={{ fontSize: 12.5 }}>
             {translation ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{translation}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{translation}</ReactMarkdown>
             ) : translating ? (
               <span style={{ color: 'var(--color-text-tertiary)' }}>翻译中...</span>
             ) : null}
