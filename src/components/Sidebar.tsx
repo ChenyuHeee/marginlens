@@ -8,6 +8,9 @@ import {
   PanelLeftClose,
   PanelLeft,
   File,
+  Link,
+  Loader2,
+  X,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore } from '@/stores';
 
@@ -18,6 +21,10 @@ export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [urlValue, setUrlValue] = useState('');
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlError, setUrlError] = useState('');
 
   const filteredDocs = documents.filter((d) =>
     d.title.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -37,6 +44,64 @@ export function Sidebar() {
     await openDocument(id);
     await annotationStore.loadAnnotations(id);
     await chatStore.loadSessions(id);
+  };
+
+  /**
+   * Parse an arXiv URL into a PDF download URL and a human-readable title.
+   * Supports: arxiv.org/abs/ID, arxiv.org/pdf/ID, arxiv.org/html/ID
+   */
+  const parseArxivUrl = (input: string): { pdfUrl: string; title: string } | null => {
+    const trimmed = input.trim();
+    // Match arXiv ID from various URL forms or bare ID
+    const patterns = [
+      /arxiv\.org\/(?:abs|pdf|html)\/([\d.]+(?:v\d+)?)/i,
+      /^(\d{4}\.\d{4,5}(?:v\d+)?)$/,
+    ];
+    for (const p of patterns) {
+      const m = trimmed.match(p);
+      if (m) {
+        const id = m[1];
+        return {
+          pdfUrl: `https://arxiv.org/pdf/${id}`,
+          title: `arXiv:${id}`,
+        };
+      }
+    }
+    return null;
+  };
+
+  const handleImportUrl = async () => {
+    if (!urlValue.trim()) return;
+    const parsed = parseArxivUrl(urlValue);
+    if (!parsed) {
+      setUrlError('无法识别的 arXiv 链接，请输入如 https://arxiv.org/abs/2301.12345');
+      return;
+    }
+    setUrlLoading(true);
+    setUrlError('');
+    try {
+      // Try direct fetch first; if CORS blocks, fall back to proxy
+      let response: Response;
+      try {
+        response = await fetch(parsed.pdfUrl, { redirect: 'follow' });
+        if (!response.ok) throw new Error('direct fetch failed');
+      } catch {
+        // Use a public CORS proxy as fallback
+        const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(parsed.pdfUrl)}`;
+        response = await fetch(proxyUrl, { redirect: 'follow' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const file = new window.File([blob], `${parsed.title}.pdf`, { type: 'application/pdf' });
+      const id = await addDocument(file);
+      await handleOpenDocument(id);
+      setShowUrlInput(false);
+      setUrlValue('');
+    } catch (err) {
+      setUrlError(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setUrlLoading(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -155,6 +220,14 @@ export function Sidebar() {
           />
         </label>
         <button
+          onClick={() => { setShowUrlInput(!showUrlInput); setUrlError(''); }}
+          className="mac-btn justify-center"
+          style={{ fontSize: 11.5, padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}
+          title="从 arXiv 链接导入"
+        >
+          <Link size={12} />
+        </button>
+        <button
           onClick={handleCreateNew}
           className="mac-btn flex-1 justify-center"
           style={{ fontSize: 11.5, padding: '6px 0', borderRadius: 'var(--radius-sm)' }}
@@ -163,6 +236,42 @@ export function Sidebar() {
           新建
         </button>
       </div>
+
+      {/* arXiv URL import */}
+      {showUrlInput && (
+        <div className="px-3 pb-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              placeholder="粘贴 arXiv 链接..."
+              value={urlValue}
+              onChange={(e) => { setUrlValue(e.target.value); setUrlError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleImportUrl();
+                if (e.key === 'Escape') { setShowUrlInput(false); setUrlValue(''); }
+              }}
+              autoFocus
+              disabled={urlLoading}
+              className="mac-input flex-1"
+              style={{ fontSize: 11.5, padding: '5px 8px', borderRadius: 'var(--radius-sm)' }}
+            />
+            {urlLoading ? (
+              <Loader2 size={14} className="animate-spin flex-shrink-0" style={{ color: 'var(--color-primary)' }} />
+            ) : (
+              <button
+                onClick={() => { setShowUrlInput(false); setUrlValue(''); setUrlError(''); }}
+                className="p-1 rounded flex-shrink-0"
+                style={{ color: 'var(--color-text-tertiary)' }}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          {urlError && (
+            <p className="text-[10px] mt-1 px-0.5" style={{ color: 'var(--color-danger)' }}>{urlError}</p>
+          )}
+        </div>
+      )}
 
       {/* Section label */}
       <div className="px-4 pt-1 pb-1">

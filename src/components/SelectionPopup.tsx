@@ -284,6 +284,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
               }
               if (e.key === 'Escape') onClose();
             }}
+            autoFocus
             className="mac-input"
             style={{ fontSize: 12.5, borderRadius: 'var(--radius-sm)' }}
           />
