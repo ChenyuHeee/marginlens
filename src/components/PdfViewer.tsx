@@ -325,24 +325,33 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     });
   }, [annotations, pdfDoc]);
 
-  // Track current page on scroll
+  // Track current page via IntersectionObserver (no getBoundingClientRect on scroll)
   useEffect(() => {
     const scrollEl = scrollContainerRef.current;
-    if (!scrollEl) return;
+    if (!scrollEl || numPages === 0) return;
 
-    const handleScroll = () => {
-      const pageElements = Array.from(pageRefs.current.entries());
-      for (const [pageNum, el] of pageElements) {
-        const rect = el.getBoundingClientRect();
-        const containerRect = scrollEl.getBoundingClientRect();
-        if (rect.top <= containerRect.top + containerRect.height / 3 && rect.bottom > containerRect.top) {
-          setCurrentPage(pageNum);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Pick the most visible page
+        let best: { pageNum: number; ratio: number } | null = null;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const pageNum = parseInt((entry.target as HTMLElement).dataset.page || '0');
+            if (pageNum && (!best || entry.intersectionRatio > best.ratio)) {
+              best = { pageNum, ratio: entry.intersectionRatio };
+            }
+          }
         }
-      }
-    };
+        if (best) setCurrentPage(best.pageNum);
+      },
+      { root: scrollEl, threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
 
-    scrollEl.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scrollEl.removeEventListener('scroll', handleScroll);
+    // Observe all rendered page wrappers
+    for (const [, el] of pageRefs.current.entries()) {
+      observer.observe(el);
+    }
+    return () => observer.disconnect();
   }, [numPages]);
 
   // Handle text selection
@@ -530,7 +539,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         ref={scrollContainerRef}
         className="flex-1 overflow-auto"
         id="pdf-scroll-container"
-        style={{ background: 'var(--color-bg-tertiary)' }}
+        style={{ background: 'var(--color-bg-tertiary)', willChange: 'transform' }}
         onMouseUp={handleMouseUp}
         onClick={handleHighlightClick}
       >

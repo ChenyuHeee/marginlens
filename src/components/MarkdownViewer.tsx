@@ -167,11 +167,11 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
       );
 
       if (highlightSpan) {
-        // Walk up to the nearest block-level parent
+        // Walk up to the nearest block-level parent using tag names (avoids getComputedStyle reflow)
+        const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'DIV', 'SECTION', 'ARTICLE', 'TD', 'TH', 'DT', 'DD']);
         let blockParent: Element | null = highlightSpan.parentElement;
         while (blockParent && blockParent !== containerRef.current) {
-          const display = window.getComputedStyle(blockParent).display;
-          if (display === 'block' || display === 'list-item' || blockParent.parentElement === containerRef.current) {
+          if (BLOCK_TAGS.has(blockParent.tagName) || blockParent.parentElement === containerRef.current) {
             break;
           }
           blockParent = blockParent.parentElement;
@@ -222,7 +222,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
 
   return (
     <div className="relative h-full">
-      <div className="h-full overflow-y-auto px-10 py-8 lg:px-20" id="markdown-scroll-container">
+      <div className="h-full overflow-y-auto px-10 py-8 lg:px-20" id="markdown-scroll-container" style={{ willChange: 'transform' }}>
         <div
           ref={containerRef}
           className="markdown-body max-w-[780px]"
