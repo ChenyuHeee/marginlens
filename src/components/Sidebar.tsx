@@ -11,21 +11,28 @@ import {
   Link,
   Loader2,
   X,
+  User,
+  LogOut,
+  RefreshCw,
+  Cloud,
 } from 'lucide-react';
-import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore } from '@/stores';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { AuthDialog } from './AuthDialog';
 
 export function Sidebar() {
   const { documents, activeDocumentId, openDocument, addDocument, addDocumentFromText, removeDocument } = useDocumentStore();
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { user, syncing: cloudSyncing, lastSyncedAt, syncError, signOut, syncNow } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlValue, setUrlValue] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState('');
-
+  const [authOpen, setAuthOpen] = useState(false);
   const filteredDocs = documents.filter((d) =>
     d.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -355,6 +362,70 @@ export function Sidebar() {
           </div>
         )}
       </div>
+
+      {/* User / Auth section */}
+      {isSupabaseConfigured() && (
+        <div
+          className="px-3 py-2.5 flex-shrink-0"
+          style={{ borderTop: '1px solid var(--color-border)' }}
+        >
+          {user ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}
+                >
+                  <User size={11} />
+                </div>
+                <span className="text-[11px] truncate flex-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  {user.email}
+                </span>
+                <button
+                  onClick={() => signOut()}
+                  className="p-1 rounded transition-colors"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-danger)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                  title="退出登录"
+                >
+                  <LogOut size={12} />
+                </button>
+              </div>
+              <button
+                onClick={() => syncNow()}
+                disabled={cloudSyncing}
+                className="mac-btn w-full justify-center gap-1.5"
+                style={{ fontSize: 10.5, padding: '5px 0', borderRadius: 'var(--radius-sm)', opacity: cloudSyncing ? 0.6 : 1 }}
+              >
+                {cloudSyncing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                {cloudSyncing ? '同步中...' : '同步'}
+              </button>
+              {lastSyncedAt && (
+                <p className="text-[9.5px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
+                  上次同步: {new Date(lastSyncedAt).toLocaleTimeString()}
+                </p>
+              )}
+              {syncError && (
+                <p className="text-[9.5px] text-center" style={{ color: 'var(--color-danger)' }}>
+                  同步错误: {syncError}
+                </p>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="mac-btn w-full justify-center gap-1.5"
+              style={{ fontSize: 11, padding: '6px 0', borderRadius: 'var(--radius-sm)' }}
+            >
+              <Cloud size={12} />
+              登录以同步
+            </button>
+          )}
+        </div>
+      )}
+
+      <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 }

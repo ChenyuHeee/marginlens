@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 import type { Document, Annotation, ChatSession, ChatMessage, AppSettings, SelectionInfo, GitHubSyncConfig } from '@/types';
+import type { User } from '@supabase/supabase-js';
 import * as db from '@/lib/db';
 import { DEFAULT_SETTINGS } from '@/lib/defaults';
 import { parseAnnotationsFromMarkdown } from '@/lib/annotations';
+import { getSupabase } from '@/lib/supabase';
+import { fullSync } from '@/lib/cloudSync';
 import { v4 as uuid } from 'uuid';
 
 // ─── Document Store ───
@@ -461,4 +464,88 @@ export const useGitHubSyncStore = create<GitHubSyncStore>((set) => ({
 
   setSyncing: (v) => set({ syncing: v }),
   setLastSyncedAt: (t) => set({ lastSyncedAt: t }),
+}));
+
+// ─── Auth Store ───
+interface AuthStore {
+  user: User | null;
+  loading: boolean;
+  syncing: boolean;
+  lastSyncedAt: number | null;
+  syncError: string | null;
+  init: () => Promise<void>;
+  signUp: (email: string, password: string) => Promise<{ error?: string }>;
+  signIn: (email: string, password: string) => Promise<{ error?: string }>;
+  signOut: () => Promise<void>;
+  syncNow: () => Promise<void>;
+}
+
+export const useAuthStore = create<AuthStore>((set, get) => ({
+  user: null,
+  loading: true,
+  syncing: false,
+  lastSyncedAt: null,
+  syncError: null,
+
+  init: async () => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      set({ loading: false });
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    set({ user: session?.user ?? null, loading: false });
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      set({ user: session?.user ?? null });
+    });
+  },
+
+  signUp: async (email, password) => {
+    const supabase = getSupabase();
+    if (!supabase) return { error: 'Supabase 未配置' };
+
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) return { error: error.message };
+    return {};
+  },
+
+  signIn: async (email, password) => {
+    const supabase = getSupabase();
+    if (!supabase) return { error: 'Supabase 未配置' };
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message };
+
+    set({ user: data.user });
+
+    // Auto-sync on login
+    get().syncNow();
+    return {};
+  },
+
+  signOut: async () => {
+    const supabase = getSupabase();
+    if (supabase) await supabase.auth.signOut();
+    set({ user: null, lastSyncedAt: null, syncError: null });
+  },
+
+  syncNow: async () => {
+    const { user, syncing } = get();
+    if (!user || syncing) return;
+
+    set({ syncing: true, syncError: null });
+    try {
+      await fullSync(user.id);
+      set({ lastSyncedAt: Date.now() });
+      // Reload local stores after sync
+      await useDocumentStore.getState().loadDocuments();
+      await useSettingsStore.getState().loadSettings();
+    } catch (e) {
+      set({ syncError: e instanceof Error ? e.message : String(e) });
+    } finally {
+      set({ syncing: false });
+    }
+  },
 }));

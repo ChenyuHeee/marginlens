@@ -12,6 +12,7 @@
   "dependencies": {
     "@milkdown/kit": "^7.20.0",
     "@milkdown/react": "^7.20.0",
+    "@supabase/supabase-js": "^2.103.0",
     "@tailwindcss/vite": "^4.2.2",
     "idb": "^8.0.3",
     "lucide-react": "^1.8.0",
