@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -134,7 +134,8 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   }, []);
 
   // Apply annotation highlights AND insert portal containers after highlighted paragraphs
-  useEffect(() => {
+  // useLayoutEffect so DOM mutations happen before paint — prevents scroll blank flash
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
 
     // Clean up old highlights
@@ -191,7 +192,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   }, [annotations, documentId, content]);
 
   // Temporary visual highlight for popup selection (so autoFocus doesn't lose the visual cue)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
     // Remove old temp highlights
     containerRef.current.querySelectorAll('.temp-selection-highlight').forEach((el) => {
