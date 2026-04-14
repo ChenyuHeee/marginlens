@@ -39,10 +39,11 @@ export async function pushAnnotations(userId: string): Promise<number> {
   const supabase = getSupabase();
   if (!supabase) return 0;
 
-  // Collect annotations for all documents
+  // Only collect annotations for markdown documents (PDFs are not synced → no cloud FK)
   const docs = await db.getAllDocuments();
   const allAnnotations: Annotation[] = [];
   for (const doc of docs) {
+    if (doc.type !== 'markdown') continue;
     const anns = await db.getAnnotationsByDocument(doc.id);
     allAnnotations.push(...anns);
   }
@@ -74,9 +75,11 @@ export async function pushChatSessions(userId: string): Promise<number> {
   const supabase = getSupabase();
   if (!supabase) return 0;
 
+  // Only collect sessions for markdown documents (PDFs are not synced → no cloud FK)
   const docs = await db.getAllDocuments();
   const allSessions: ChatSession[] = [];
   for (const doc of docs) {
+    if (doc.type !== 'markdown') continue;
     const sessions = await db.getChatSessionsByDocument(doc.id);
     allSessions.push(...sessions);
   }
