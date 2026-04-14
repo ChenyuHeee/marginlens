@@ -219,6 +219,11 @@ body {
 }
 
 /* ── Annotation highlights ── */
+.temp-selection-highlight,
+.temp-pdf-selection-highlight {
+  background-color: rgba(52, 120, 246, 0.25);
+  border-radius: 2px;
+}
 .annotation-highlight {
   background-color: var(--color-highlight);
   cursor: pointer;

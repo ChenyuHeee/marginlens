@@ -391,6 +391,33 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     });
   }, [setSelection]);
 
+  // Temporary visual highlight for popup selection
+  useEffect(() => {
+    if (!containerRef.current) return;
+    // Remove old temp highlights
+    containerRef.current.querySelectorAll('.temp-pdf-selection-highlight').forEach((el) => {
+      el.classList.remove('temp-pdf-selection-highlight');
+    });
+    if (!popupSelection) return;
+    const pageEl = containerRef.current.querySelector(`.pdf-page-wrapper[data-page="${popupSelection.paragraphIndex}"]`);
+    if (!pageEl) return;
+    const textLayer = pageEl.querySelector('.pdf-text-layer');
+    if (!textLayer) return;
+    const spans = textLayer.querySelectorAll<HTMLSpanElement>('span');
+    const start = popupSelection.startOffset;
+    const end = popupSelection.endOffset;
+    if (start < 0 || end <= start) return;
+    let charCount = 0;
+    for (const span of spans) {
+      const spanStart = charCount;
+      const spanEnd = charCount + (span.textContent?.length || 0);
+      charCount = spanEnd;
+      if (spanEnd > start && spanStart < end) {
+        span.classList.add('temp-pdf-selection-highlight');
+      }
+    }
+  }, [popupSelection]);
+
   // Close popup on outside click
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {

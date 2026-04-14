@@ -190,6 +190,33 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
     setPortalContainers(newPortals);
   }, [annotations, documentId, content]);
 
+  // Temporary visual highlight for popup selection (so autoFocus doesn't lose the visual cue)
+  useEffect(() => {
+    if (!containerRef.current) return;
+    // Remove old temp highlights
+    containerRef.current.querySelectorAll('.temp-selection-highlight').forEach((el) => {
+      const parent = el.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(el.textContent || ''), el);
+        parent.normalize();
+      }
+    });
+    if (!popupSelection) return;
+    // Apply temporary highlight at the captured offsets
+    highlightText(
+      containerRef.current,
+      popupSelection.text,
+      '__temp_selection__',
+      popupSelection.startOffset,
+      popupSelection.endOffset,
+    );
+    // Restyle to temp class
+    containerRef.current.querySelectorAll('.annotation-highlight[data-annotation-id="__temp_selection__"]').forEach((el) => {
+      el.className = 'temp-selection-highlight';
+      delete (el as HTMLElement).dataset.annotationId;
+    });
+  }, [popupSelection]);
+
   // Annotations that couldn't be placed via portal (text not found in document)
   const orphanAnnotations = docAnnotations.filter((ann) => !portalContainers.has(ann.id));
 
