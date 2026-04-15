@@ -13,7 +13,7 @@ import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-reac
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { activeDocument, loadDocuments } = useDocumentStore();
+  const { activeDocument, activeDocumentId, loadDocuments } = useDocumentStore();
   const { loadSettings, settings } = useSettingsStore();
   const { loadConfig: loadGitHubConfig } = useGitHubSyncStore();
   const { init: initAuth } = useAuthStore();
@@ -27,6 +27,14 @@ export default function App() {
     initAuth();
     loadWorkspaces();
   }, []);
+
+  // Reload annotations + chat whenever the active document changes (covers
+  // the initial restore-from-localStorage case as well as manual switching)
+  useEffect(() => {
+    if (!activeDocumentId) return;
+    useAnnotationStore.getState().loadAnnotations(activeDocumentId);
+    useChatStore.getState().loadSessions(activeDocumentId);
+  }, [activeDocumentId]);
 
   // Theme: apply based on settings or system preference
   useEffect(() => {
