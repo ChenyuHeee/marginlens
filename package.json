@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@milkdown/kit": "^7.20.0",
+    "@milkdown/plugin-collab": "^7.20.0",
     "@milkdown/react": "^7.20.0",
     "@supabase/supabase-js": "^2.103.0",
     "@tailwindcss/vite": "^4.2.2",
@@ -29,6 +30,7 @@
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.2.2",
     "uuid": "^13.0.0",
+    "yjs": "^13.6.30",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

@@ -316,10 +316,11 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
                 {/* Step 1: Share mode */}
                 <div className="space-y-2">
                   <p className="text-[11px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>分享模式</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {([
+                <div className="grid grid-cols-3 gap-2">
+                  {([
                       { value: 'readonly', emoji: '👁', label: '只读', desc: '对方只能浏览，无法导入' },
                       { value: 'import', emoji: '📥', label: '可导入', desc: '对方可一键导入到自己的文档库' },
+                      { value: 'collab', emoji: '✏️', label: '协同编辑', desc: '多人实时同步编辑同一文档' },
                     ] as const).map(({ value, emoji, label, desc }) => (
                       <button
                         key={value}

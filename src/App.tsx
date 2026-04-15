@@ -8,15 +8,18 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
 import { ShareView } from '@/components/ShareView';
+import { UsernameSetupDialog } from '@/components/UsernameSetupDialog';
+import { getMyProfile } from '@/lib/profiles';
 import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore, useWorkspaceStore } from '@/stores';
 import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showUsernameSetup, setShowUsernameSetup] = useState(false);
   const { activeDocument, activeDocumentId, loadDocuments } = useDocumentStore();
   const { loadSettings, settings } = useSettingsStore();
   const { loadConfig: loadGitHubConfig } = useGitHubSyncStore();
-  const { init: initAuth } = useAuthStore();
+  const { init: initAuth, user } = useAuthStore();
   const { focusMode, toggleFocusMode } = useUIStore();
   const { loadWorkspaces } = useWorkspaceStore();
 
@@ -27,6 +30,14 @@ export default function App() {
     initAuth();
     loadWorkspaces();
   }, []);
+
+  // After login, check if the user has set a username; if not, prompt them
+  useEffect(() => {
+    if (!user) { setShowUsernameSetup(false); return; }
+    getMyProfile().then((profile) => {
+      if (!profile) setShowUsernameSetup(true);
+    });
+  }, [user?.id]);
 
   // Reload annotations + chat whenever the active document changes (covers
   // the initial restore-from-localStorage case as well as manual switching)
@@ -83,6 +94,10 @@ export default function App() {
 
   return (
     <div className="h-full flex" style={{ backgroundColor: 'var(--color-bg)' }}>
+      <UsernameSetupDialog
+        open={showUsernameSetup}
+        onComplete={() => setShowUsernameSetup(false)}
+      />
       {!focusMode && <Sidebar />}
 
       <div className="flex-1 flex min-w-0">

@@ -1,7 +1,7 @@
 import { getSupabase } from './supabase';
 import type { Annotation } from '@/types';
 
-export type ShareMode = 'readonly' | 'import';
+export type ShareMode = 'readonly' | 'import' | 'collab';
 export type AccessMode = 'public' | 'restricted';
 
 export interface SharedDocument {

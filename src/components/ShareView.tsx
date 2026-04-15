@@ -7,6 +7,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import { loadShare, type SharedDocument } from '@/lib/share';
 import { useDocumentStore, useAnnotationStore } from '@/stores';
+import { CollabEditor } from '@/components/CollabEditor';
 import faviconUrl from '/favicon.svg?url';
 
 interface ShareViewProps {
@@ -97,7 +98,7 @@ export function ShareView({ token }: ShareViewProps) {
             className="text-[10px] px-1.5 py-0.5 rounded"
             style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', fontWeight: 500 }}
           >
-            {doc.share_mode === 'import' ? '共享 · 可导入' : '共享只读'}
+          {doc.share_mode === 'import' ? '共享 · 可导入' : doc.share_mode === 'collab' ? '协同编辑' : '共享只读'}
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -132,6 +133,9 @@ export function ShareView({ token }: ShareViewProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
+        {doc.share_mode === 'collab' ? (
+          <CollabEditor shareId={token} initialContent={doc.content} />
+        ) : (
         <div className="max-w-3xl mx-auto px-8 py-8">
           {/* Annotations summary (if any) */}
           {doc.annotations.length > 0 && (
@@ -158,6 +162,7 @@ export function ShareView({ token }: ShareViewProps) {
             </ReactMarkdown>
           </div>
         </div>
+        )}
       </div>
 
       {/* Footer */}
