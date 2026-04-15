@@ -30,7 +30,11 @@ import {
   FolderPlus,
   ChevronRight,
   ChevronDown,
+  Share2,
+  Copy,
 } from 'lucide-react';
+import { createShare, buildShareUrl } from '@/lib/share';
+import { getAnnotationsByDocument } from '@/lib/db';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore, useWorkspaceStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthDialog } from './AuthDialog';
@@ -84,6 +88,9 @@ export function Sidebar() {
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [addingDocToWsId, setAddingDocToWsId] = useState<string | null>(null);
   const [showAbout, setShowAbout] = useState(false);
+  const [shareDialog, setShareDialog] = useState<{ url: string; title: string } | null>(null);
+  const [shareLoading, setShareLoading] = useState<string | null>(null); // doc id being shared
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -142,6 +149,22 @@ export function Sidebar() {
   const togglePin = async (e: React.MouseEvent, docId: string, pinned: boolean) => {
     e.stopPropagation();
     await updateDocument(docId, { pinnedAt: pinned ? 0 : Date.now() });
+  };
+
+  const handleShare = async (e: React.MouseEvent, doc: { id: string; title: string; content: string; type: string }) => {
+    e.stopPropagation();
+    if (doc.type !== 'markdown') return;
+    setShareLoading(doc.id);
+    try {
+      const annotations = await getAnnotationsByDocument(doc.id);
+      const token = await createShare(doc.title, doc.content, annotations);
+      const url = buildShareUrl(token);
+      setShareDialog({ url, title: doc.title });
+    } catch (err) {
+      alert('分享失败：' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setShareLoading(null);
+    }
   };
 
   const startRename = (e: React.MouseEvent, docId: string, currentTitle: string) => {
@@ -355,6 +378,72 @@ export function Sidebar() {
         </div>
 
         {/* About modal — rendered via portal so Safari fixed positioning works outside sidebar */}
+        {shareDialog && createPortal(
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+            onClick={() => { setShareDialog(null); setShareCopied(false); }}
+          >
+            <div
+              className="rounded-2xl p-6 w-[380px] animate-scale-in"
+              style={{
+                background: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border-strong)',
+                boxShadow: 'var(--shadow-xl)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Share2 size={16} style={{ color: 'var(--color-primary)' }} />
+                <span className="font-semibold text-[15px]" style={{ color: 'var(--color-text)' }}>分享文档</span>
+              </div>
+              <div className="text-[12px] mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                已生成 <span className="font-medium" style={{ color: 'var(--color-text)' }}>「{shareDialog.title}」</span> 的只读分享链接，任何人可通过该链接查看文档及批注。
+              </div>
+              <div
+                className="flex items-center gap-2 rounded-lg px-3 py-2 mb-4"
+                style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+              >
+                <span className="flex-1 text-[11px] truncate font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                  {shareDialog.url}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareDialog.url);
+                    setShareCopied(true);
+                    setTimeout(() => setShareCopied(false), 2000);
+                  }}
+                  className="flex-shrink-0 p-1.5 rounded-md transition-all"
+                  style={{ color: shareCopied ? 'var(--color-success, #22c55e)' : 'var(--color-primary)' }}
+                  title="复制链接"
+                >
+                  {shareCopied ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareDialog.url);
+                    setShareCopied(true);
+                    setTimeout(() => setShareCopied(false), 2000);
+                  }}
+                  className="flex-1 mac-btn justify-center gap-1.5 text-[12px] py-1.5"
+                  style={{ background: 'var(--color-primary)', color: '#fff', border: 'none' }}
+                >
+                  {shareCopied ? <Check size={12} /> : <Copy size={12} />}
+                  {shareCopied ? '已复制' : '复制链接'}
+                </button>
+                <button
+                  onClick={() => { setShareDialog(null); setShareCopied(false); }}
+                  className="mac-btn text-[12px] py-1.5 px-4"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
         {showAbout && createPortal(
           <div
             className="fixed inset-0 z-[200] flex items-center justify-center"
@@ -1004,6 +1093,19 @@ export function Sidebar() {
                       >
                         <Trash2 size={11} />
                       </button>
+                      {doc.type === 'markdown' && (
+                        <button
+                          onClick={(e) => handleShare(e, doc)}
+                          className="p-1 rounded-md"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                          title="生成分享链接"
+                          disabled={shareLoading === doc.id}
+                        >
+                          {shareLoading === doc.id ? <Loader2 size={11} className="animate-spin" /> : <Share2 size={11} />}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

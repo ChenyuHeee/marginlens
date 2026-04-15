@@ -7,6 +7,7 @@ import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
+import { ShareView } from '@/components/ShareView';
 import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore, useWorkspaceStore } from '@/stores';
 import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-react';
 
@@ -65,6 +66,12 @@ export default function App() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Handle ?share= URL param — render ShareView standalone
+  const shareToken = new URLSearchParams(window.location.search).get('share');
+  if (shareToken) {
+    return <ShareView token={shareToken} />;
+  }
 
   return (
     <div className="h-full flex" style={{ backgroundColor: 'var(--color-bg)' }}>
