@@ -315,11 +315,8 @@ export function Sidebar() {
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-[11px]"
-            style={{ background: 'var(--color-primary-light)' }}
-          >
-            🔍
+          <div className="w-[22px] h-[22px] flex items-center justify-center flex-shrink-0">
+            <img src="/favicon.svg" alt="MarginLens" width={22} height={22} style={{ display: 'block' }} />
           </div>
           <span className="font-semibold text-[13px] tracking-tight">MarginLens</span>
         </div>

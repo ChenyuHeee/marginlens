@@ -116,7 +116,7 @@ function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
             boxShadow: '0 4px 16px rgba(52, 120, 246, 0.10)',
           }}
         >
-          <span className="text-3xl">🔍</span>
+          <img src="/favicon.svg" alt="MarginLens" width={40} height={40} style={{ display: 'block' }} />
         </div>
 
         <h1 className="text-2xl font-bold tracking-tight mb-1" style={{ color: 'var(--color-text)' }}>
