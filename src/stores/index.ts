@@ -21,6 +21,7 @@ interface DocumentStore {
   removeDocument: (id: string) => Promise<void>;
   updateDocumentContent: (id: string, content: string) => Promise<void>;
   updateDocument: (id: string, updates: Partial<Document>) => Promise<void>;
+  touchDocument: (id: string, now?: number) => Promise<void>;
   closeDocument: () => void;
 }
 
@@ -156,6 +157,17 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     set({ documents });
   },
 
+  touchDocument: async (id: string, now = Date.now()) => {
+    const doc = await db.getDocument(id);
+    if (!doc) return;
+    const updated = { ...doc, updatedAt: now };
+    await db.saveDocument(updated);
+    const { activeDocumentId } = get();
+    const documents = (await db.getAllDocuments());
+    if (activeDocumentId === id) set({ activeDocument: updated, documents });
+    else set({ documents });
+  },
+
   closeDocument: () => {
     set({ activeDocumentId: null, activeDocument: null });
   },
@@ -192,6 +204,8 @@ export const useAnnotationStore = create<AnnotationStore>((set, get) => ({
     };
     await db.saveAnnotation(annotation);
     set({ annotations: [...get().annotations, annotation] });
+    // Bump document updatedAt so file list sort reflects the change
+    await useDocumentStore.getState().touchDocument(data.documentId, now);
     return annotation;
   },
 
@@ -199,16 +213,20 @@ export const useAnnotationStore = create<AnnotationStore>((set, get) => ({
     const annotations = get().annotations;
     const idx = annotations.findIndex((a) => a.id === id);
     if (idx === -1) return;
-    const updated = { ...annotations[idx], ...updates, updatedAt: Date.now() };
+    const now = Date.now();
+    const updated = { ...annotations[idx], ...updates, updatedAt: now };
     await db.saveAnnotation(updated);
     const newAnnotations = [...annotations];
     newAnnotations[idx] = updated;
     set({ annotations: newAnnotations });
+    await useDocumentStore.getState().touchDocument(updated.documentId, now);
   },
 
   removeAnnotation: async (id) => {
+    const ann = get().annotations.find((a) => a.id === id);
     await db.deleteAnnotation(id);
     set({ annotations: get().annotations.filter((a) => a.id !== id) });
+    if (ann) await useDocumentStore.getState().touchDocument(ann.documentId, Date.now());
   },
 
   setActiveAnnotation: (id) => set({ activeAnnotationId: id }),
