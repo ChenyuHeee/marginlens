@@ -5,6 +5,7 @@ create table if not exists shared_documents (
   content     text not null,             -- full markdown content
   annotations jsonb not null default '[]',
   created_by  uuid references auth.users(id) on delete set null,
+  author_name text,                              -- display name or email of creator
   created_at  timestamptz not null default now(),
   expires_at  timestamptz               -- null = never expires
 );

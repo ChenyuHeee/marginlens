@@ -116,7 +116,9 @@ export function ShareView({ token }: ShareViewProps) {
         className="px-6 py-2 text-[10px] flex items-center justify-between flex-shrink-0"
         style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}
       >
-        <span>由 MarginLens 生成的共享文档</span>
+        <span>
+          由 MarginLens 生成的共享文档{doc.author_name ? ` · 作者：${doc.author_name}` : ''}
+        </span>
         <span>共享于 {new Date(doc.created_at).toLocaleDateString('zh-CN')}</span>
       </div>
     </div>

@@ -6,6 +6,7 @@ export interface SharedDocument {
   title: string;
   content: string;
   annotations: Pick<Annotation, 'id' | 'selectedText' | 'contextBefore' | 'contextAfter' | 'comment' | 'llmResponse' | 'color' | 'positionHint'>[];
+  author_name: string | null;
   created_at: string;
 }
 
@@ -38,12 +39,15 @@ export async function createShare(
     id: aId, selectedText, contextBefore, contextAfter, comment, llmResponse, color, positionHint,
   }));
 
+  const author_name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || null;
+
   const { error } = await supabase.from('shared_documents').insert({
     id,
     title,
     content,
     annotations: annData,
     created_by: user.id,
+    author_name,
   });
 
   if (error) throw new Error(`分享失败: ${error.message}`);
@@ -59,7 +63,7 @@ export async function loadShare(token: string): Promise<SharedDocument | null> {
 
   const { data, error } = await supabase
     .from('shared_documents')
-    .select('id, title, content, annotations, created_at')
+    .select('id, title, content, annotations, author_name, created_at')
     .eq('id', token)
     .single();
 
