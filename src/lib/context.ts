@@ -39,6 +39,41 @@ ${documentContent}`;
 }
 
 /**
+ * Build the system message for the document-level chat panel (right sidebar).
+ * Full document is always in context; no brevity constraints.
+ */
+export function buildChatSystemMessage(
+  documentContent: string,
+  annotations: Annotation[],
+): string {
+  let msg = `你是一个学习助手，正在帮助用户理解和完成以下文档中的内容。
+
+原则：
+1. **以文档全文为主要上下文**，回答时优先依据文档内容。
+2. **详略得当**：用户需要详细解释时充分展开，不要人为截断；简单问题简短回答。
+3. **直接定位问题**：如果用户说"不会"或"卡住了"，请结合文档中的题目/内容，逐步引导解答。
+4. **代码/公式清晰**：代码用对应语言的代码块，公式用 LaTeX。
+5. **保持连贯**：参考本次对话历史，不重复已解释过的内容。
+
+以下是用户正在阅读的文档全文：
+
+---
+
+${documentContent}`;
+
+  if (annotations.length > 0) {
+    msg += '\n\n---\n\n用户已有的批注（供参考）：\n';
+    for (const ann of annotations) {
+      msg += `\n- 原文: "${ann.selectedText.slice(0, 100)}${ann.selectedText.length > 100 ? '...' : ''}"`;
+      if (ann.comment) msg += `\n  用户笔记: ${ann.comment}`;
+      if (ann.llmResponse) msg += `\n  AI批注: ${ann.llmResponse.slice(0, 200)}${ann.llmResponse.length > 200 ? '...' : ''}`;
+    }
+  }
+
+  return msg;
+}
+
+/**
  * Build the system message for a workspace-level AI session.
  * Includes: workspace structure, full markdown content, PDF extracted text,
  * and all annotations across workspace documents.

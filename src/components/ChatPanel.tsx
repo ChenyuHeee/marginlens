@@ -23,7 +23,7 @@ import {
   useUIStore,
   useWorkspaceStore,
 } from '@/stores';
-import { buildSystemMessage, buildWorkspaceSystemMessage, parseAtMentions, buildMentionContext } from '@/lib/context';
+import { buildChatSystemMessage, buildWorkspaceSystemMessage, parseAtMentions, buildMentionContext } from '@/lib/context';
 import { streamChat } from '@/lib/llm';
 import { recordApiUsage, getAnnotationsByDocument } from '@/lib/db';
 
@@ -110,7 +110,7 @@ export function ChatPanel() {
       }
     }
 
-    // Build system message on first turn
+    // Build system message on first turn; refresh document snapshot on every turn for doc sessions
     if (session.messages.length === 0) {
       if (activeWorkspace && session.workspaceId) {
         // Collect all annotations for workspace docs
@@ -129,7 +129,25 @@ export function ChatPanel() {
           (a) => a.documentId === activeDocument!.id
         );
         const docText = activeDocument!.content || activeDocument!.extractedText || '';
-        addMessage({ role: 'system', content: buildSystemMessage(docText, allAnnotations) });
+        addMessage({ role: 'system', content: buildChatSystemMessage(docText, allAnnotations) });
+      }
+    } else if (!activeWorkspace && activeDocument) {
+      // Refresh system message so AI always sees the latest document content
+      const allAnnotations = useAnnotationStore.getState().annotations.filter(
+        (a) => a.documentId === activeDocument.id
+      );
+      const docText = activeDocument.content || activeDocument.extractedText || '';
+      const newSystemContent = buildChatSystemMessage(docText, allAnnotations);
+      const currentSession = useChatStore.getState().activeSession;
+      if (currentSession && currentSession.messages[0]?.role === 'system') {
+        const messages = [...currentSession.messages];
+        messages[0] = { ...messages[0], content: newSystemContent };
+        useChatStore.setState({
+          activeSession: { ...currentSession, messages },
+          sessions: useChatStore.getState().sessions.map((s) =>
+            s.id === currentSession.id ? { ...currentSession, messages } : s
+          ),
+        });
       }
     }
 
