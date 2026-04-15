@@ -12,7 +12,15 @@ import { getAnnotationsByDocument } from '@/lib/db';
 /** Extract the first markdown heading (# …) from content, null if none. */
 function extractFirstHeading(md: string): string | null {
   const match = md.match(/^#{1,6}\s+(.+)$/m);
-  return match ? match[1].trim() : null;
+  if (!match) return null;
+  // Strip inline markdown: bold (**x** / __x__), italic (*x* / _x_), inline code (`x`), strikethrough (~~x~~)
+  const plain = match[1]
+    .replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_, a, b) => a ?? b)
+    .replace(/\*(.+?)\*|_(.+?)_/g, (_, a, b) => a ?? b)
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .trim();
+  return plain || null;
 }
 
 interface MarkdownPanelProps {
