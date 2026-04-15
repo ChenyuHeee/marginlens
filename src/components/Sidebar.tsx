@@ -29,7 +29,6 @@ import {
   FolderPlus,
   ChevronRight,
   ChevronDown,
-  Github,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore, useWorkspaceStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -344,7 +343,7 @@ export function Sidebar() {
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
             onClick={(e) => e.stopPropagation()}
           >
-            <Github size={13} />
+            <GitHubIcon size={13} />
           </a>
         </div>
 
@@ -381,7 +380,7 @@ export function Sidebar() {
                     className="flex items-center gap-1 font-medium hover:underline"
                     style={{ color: 'var(--color-text)' }}
                   >
-                    <Github size={11} />
+                    <GitHubIcon size={11} />
                     Chenyu He
                   </a>
                 </div>
