@@ -75,6 +75,7 @@ export function Sidebar() {
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [addingDocToWsId, setAddingDocToWsId] = useState<string | null>(null);
+  const [showAbout, setShowAbout] = useState(false);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -314,12 +315,72 @@ export function Sidebar() {
         className="flex items-center justify-between px-4 h-[52px] flex-shrink-0"
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
-        <div className="flex items-center gap-2.5">
+        <button
+          className="flex items-center gap-2.5 rounded-lg px-1 -mx-1 transition-all"
+          onClick={() => setShowAbout(true)}
+          title="关于 MarginLens"
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+        >
           <div className="w-[22px] h-[22px] flex items-center justify-center flex-shrink-0">
             <img src="/favicon.svg" alt="MarginLens" width={22} height={22} style={{ display: 'block' }} />
           </div>
           <span className="font-semibold text-[13px] tracking-tight">MarginLens</span>
-        </div>
+        </button>
+
+        {/* About modal */}
+        {showAbout && (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setShowAbout(false)}
+          >
+            <div
+              className="rounded-2xl p-6 w-80 animate-scale-in"
+              style={{
+                background: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border-strong)',
+                boxShadow: 'var(--shadow-xl)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-col items-center gap-3 mb-5">
+                <img src="/favicon.svg" alt="MarginLens" width={48} height={48} />
+                <div className="text-center">
+                  <div className="font-bold text-[17px] tracking-tight" style={{ color: 'var(--color-text)' }}>MarginLens</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>AI-powered reading & annotation</div>
+                </div>
+              </div>
+              <div className="space-y-2 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Author</span>
+                  <span className="font-medium" style={{ color: 'var(--color-text)' }}>Chenyu He</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Affiliation</span>
+                  <span>Zhejiang University</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Email</span>
+                  <a href="mailto:hechenyu@zju.edu.cn" className="hover:underline" style={{ color: 'var(--color-primary)' }}>hechenyu@zju.edu.cn</a>
+                </div>
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 8 }}>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>Powered by</span>
+                    <span>Claude · Anthropic</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAbout(false)}
+                className="mt-5 w-full mac-btn text-[12px] py-1.5"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        )}
         <button
           onClick={toggleSidebar}
           className="p-1.5 rounded-lg transition-all"
