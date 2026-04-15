@@ -23,8 +23,13 @@ import {
   BarChart2,
   List,
   Tag,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
-import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore, useWorkspaceStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthDialog } from './AuthDialog';
 import { ApiMonitorPanel } from './ApiMonitorPanel';
@@ -45,8 +50,9 @@ export function Sidebar() {
   const { documents, activeDocumentId, activeDocument, openDocument, addDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
-  const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline, tagFilter, setTagFilter } = useUIStore();
+  const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline, tagFilter, setTagFilter, activeWorkspaceId, setActiveWorkspaceId } = useUIStore();
   const { user, syncing: cloudSyncing, lastSyncedAt, syncError, signOut, syncNow } = useAuthStore();
+  const { workspaces, loadWorkspaces, createWorkspace, removeWorkspace, addDocumentToWorkspace, removeDocumentFromWorkspace } = useWorkspaceStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -64,6 +70,12 @@ export function Sidebar() {
   const [tagInput, setTagInput] = useState('');
   const tagInputRef = useRef<HTMLInputElement>(null);
 
+  // Workspace UI state
+  const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(new Set());
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [addingDocToWsId, setAddingDocToWsId] = useState<string | null>(null);
+
   // Close sort menu on outside click
   useEffect(() => {
     if (!showSortMenu) return;
@@ -71,6 +83,43 @@ export function Sidebar() {
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [showSortMenu]);
+
+  // Load workspaces on mount
+  useEffect(() => { loadWorkspaces(); }, []);
+
+  const toggleWorkspaceExpand = (wsId: string) => {
+    setExpandedWorkspaceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(wsId)) {
+        next.delete(wsId);
+      } else {
+        next.add(wsId);
+      }
+      return next;
+    });
+  };
+
+  const handleActivateWorkspace = async (wsId: string) => {
+    setActiveWorkspaceId(wsId);
+    setExpandedWorkspaceIds((prev) => new Set([...prev, wsId]));
+    await chatStore.loadWorkspaceSessions(wsId);
+  };
+
+  const handleDeactivateWorkspace = () => {
+    setActiveWorkspaceId(null);
+    if (activeDocumentId) {
+      chatStore.loadSessions(activeDocumentId);
+    }
+  };
+
+  const handleCreateWorkspace = async () => {
+    const name = newWorkspaceName.trim();
+    if (!name) return;
+    const ws = await createWorkspace(name);
+    setNewWorkspaceName('');
+    setCreatingWorkspace(false);
+    await handleActivateWorkspace(ws.id);
+  };
 
   const handleSort = (key: SortKey) => {
     const next = sort.key === key
@@ -412,33 +461,43 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Tab switcher: docs / outline */}
-      {activeDocument && (
-        <div className="px-3 pb-1 flex gap-1">
-          <button
-            onClick={() => setSidebarTab('docs')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
-            style={{
-              background: sidebarTab === 'docs' ? 'var(--color-primary-light)' : 'transparent',
-              color: sidebarTab === 'docs' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
-            }}
-          >
-            <FileText size={11} />
-            文档
-          </button>
-          <button
-            onClick={() => setSidebarTab('outline')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
-            style={{
-              background: sidebarTab === 'outline' ? 'var(--color-primary-light)' : 'transparent',
-              color: sidebarTab === 'outline' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
-            }}
-          >
-            <List size={11} />
-            目录
-          </button>
-        </div>
-      )}
+      {/* Tab switcher: docs / outline / workspaces */}
+      <div className="px-3 pb-1 flex gap-1">
+        <button
+          onClick={() => { setSidebarTab('docs'); handleDeactivateWorkspace(); }}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
+          style={{
+            background: sidebarTab === 'docs' ? 'var(--color-primary-light)' : 'transparent',
+            color: sidebarTab === 'docs' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
+          }}
+        >
+          <FileText size={11} />
+          文档
+        </button>
+        <button
+          onClick={() => { if (activeDocument) setSidebarTab('outline'); }}
+          disabled={!activeDocument}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{
+            background: sidebarTab === 'outline' ? 'var(--color-primary-light)' : 'transparent',
+            color: sidebarTab === 'outline' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
+          }}
+        >
+          <List size={11} />
+          目录
+        </button>
+        <button
+          onClick={() => setSidebarTab('workspaces')}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
+          style={{
+            background: sidebarTab === 'workspaces' ? 'var(--color-primary-light)' : 'transparent',
+            color: sidebarTab === 'workspaces' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
+          }}
+        >
+          <Folder size={11} />
+          工作区
+        </button>
+      </div>
 
       {/* Outline panel (replaces doc list when tab = outline) */}
       {sidebarTab === 'outline' && activeDocument ? (
@@ -453,6 +512,188 @@ export function Sidebar() {
           ) : (
             <MarkdownOutline content={activeDocument.content || ''} />
           )}
+        </div>
+      ) : sidebarTab === 'workspaces' ? (
+        /* ─── Workspace Panel ─── */
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
+          {/* Create workspace */}
+          <div className="px-1 pt-2 pb-1 flex items-center gap-1">
+            <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
+              工作区 ({workspaces.length})
+            </span>
+            <button
+              onClick={() => setCreatingWorkspace(true)}
+              className="p-1 rounded transition-all"
+              title="新建工作区"
+              style={{ color: 'var(--color-text-tertiary)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+            >
+              <FolderPlus size={13} />
+            </button>
+          </div>
+
+          {creatingWorkspace && (
+            <div className="px-1 pb-2 flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={newWorkspaceName}
+                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateWorkspace();
+                  if (e.key === 'Escape') { setCreatingWorkspace(false); setNewWorkspaceName(''); }
+                }}
+                onBlur={() => { if (!newWorkspaceName.trim()) setCreatingWorkspace(false); }}
+                placeholder="工作区名称..."
+                className="mac-input flex-1"
+                style={{ fontSize: 11.5, padding: '4px 8px', borderRadius: 'var(--radius-sm)' }}
+              />
+              <button
+                onClick={handleCreateWorkspace}
+                disabled={!newWorkspaceName.trim()}
+                className="p-1 rounded disabled:opacity-30"
+                style={{ color: 'var(--color-primary)' }}
+              >
+                <Check size={12} />
+              </button>
+            </div>
+          )}
+
+          {workspaces.length === 0 && !creatingWorkspace && (
+            <div className="flex flex-col items-center justify-center py-10 text-center px-3">
+              <Folder size={28} style={{ color: 'var(--color-text-tertiary)', opacity: 0.4, marginBottom: 8 }} />
+              <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                点击右上角 + 创建工作区
+              </p>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-tertiary)', opacity: 0.7 }}>
+                将多个文档组织成项目或课程
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            {workspaces.map((ws) => {
+              const isExpanded = expandedWorkspaceIds.has(ws.id);
+              const isActive = activeWorkspaceId === ws.id;
+              const wsDocs = documents.filter((d) => ws.documentIds.includes(d.id));
+              const availableDocs = documents.filter((d) => !ws.documentIds.includes(d.id));
+
+              return (
+                <div key={ws.id} className="rounded-lg overflow-hidden" style={{ border: isActive ? '1px solid var(--color-primary)' : '1px solid transparent' }}>
+                  {/* Workspace header row */}
+                  <div
+                    className="group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer rounded-lg transition-all"
+                    style={{ background: isActive ? 'var(--color-primary-light)' : 'transparent' }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                    onClick={() => {
+                      toggleWorkspaceExpand(ws.id);
+                      if (!isActive) {
+                        handleActivateWorkspace(ws.id);
+                      } else if (isExpanded) {
+                        handleDeactivateWorkspace();
+                      }
+                    }}
+                  >
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }}>
+                      {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                    </span>
+                    {isExpanded
+                      ? <FolderOpen size={13} style={{ color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)', flexShrink: 0 }} />
+                      : <Folder size={13} style={{ color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)', flexShrink: 0 }} />
+                    }
+                    <span
+                      className="flex-1 text-[12px] font-medium truncate"
+                      style={{ color: isActive ? 'var(--color-primary)' : 'var(--color-text)' }}
+                    >
+                      {ws.name}
+                    </span>
+                    <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {ws.documentIds.length}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (confirm(`删除工作区「${ws.name}」？文档不会被删除。`)) { removeWorkspace(ws.id); if (isActive) handleDeactivateWorkspace(); } }}
+                      className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded transition-all"
+                      style={{ color: 'var(--color-danger)', flexShrink: 0 }}
+                      title="删除工作区"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+
+                  {/* Expanded: doc list inside workspace */}
+                  {isExpanded && (
+                    <div className="pb-1">
+                      {wsDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="group flex items-center gap-1.5 pl-7 pr-2 py-1 cursor-pointer transition-all"
+                          style={{ background: activeDocumentId === doc.id ? 'var(--color-primary-light)' : 'transparent' }}
+                          onMouseEnter={(e) => { if (activeDocumentId !== doc.id) e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+                          onMouseLeave={(e) => { if (activeDocumentId !== doc.id) e.currentTarget.style.background = 'transparent'; }}
+                          onClick={() => handleOpenDocument(doc.id)}
+                        >
+                          <FileText size={11} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
+                          <span
+                            className="flex-1 text-[11px] truncate"
+                            style={{ color: activeDocumentId === doc.id ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}
+                          >
+                            {doc.title}
+                          </span>
+                          <span className="text-[9px] opacity-60" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {doc.type.toUpperCase()}
+                          </span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeDocumentFromWorkspace(ws.id, doc.id); }}
+                            className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded transition-all"
+                            style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }}
+                            title="从工作区移除"
+                          >
+                            <X size={9} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Add doc to workspace */}
+                      {addingDocToWsId === ws.id ? (
+                        <div className="pl-7 pr-2 py-1">
+                          <select
+                            autoFocus
+                            className="mac-input w-full text-[11px]"
+                            style={{ padding: '3px 6px', borderRadius: 'var(--radius-sm)' }}
+                            defaultValue=""
+                            onChange={async (e) => {
+                              if (e.target.value) {
+                                await addDocumentToWorkspace(ws.id, e.target.value);
+                              }
+                              setAddingDocToWsId(null);
+                            }}
+                            onBlur={() => setAddingDocToWsId(null)}
+                          >
+                            <option value="" disabled>— 选择文档添加 —</option>
+                            {availableDocs.map((d) => (
+                              <option key={d.id} value={d.id}>{d.type === 'pdf' ? '📑' : '📄'} {d.title}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setAddingDocToWsId(ws.id)}
+                          className="flex items-center gap-1 pl-7 pr-2 py-1 w-full text-left text-[11px] transition-all"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                        >
+                          <Plus size={10} />
+                          添加文档
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <>

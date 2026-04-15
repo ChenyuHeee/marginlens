@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Document, Annotation, ChatSession, ChatMessage, AppSettings, SelectionInfo, GitHubSyncConfig } from '@/types';
+import type { Document, Annotation, ChatSession, ChatMessage, AppSettings, SelectionInfo, GitHubSyncConfig, Workspace } from '@/types';
 import type { User } from '@supabase/supabase-js';
 import * as db from '@/lib/db';
 import { DEFAULT_SETTINGS } from '@/lib/defaults';
@@ -216,7 +216,8 @@ interface ChatStore {
   isStreaming: boolean;
   abortController: AbortController | null;
   loadSessions: (documentId: string) => Promise<void>;
-  createSession: (documentId: string, title?: string) => Promise<ChatSession>;
+  loadWorkspaceSessions: (workspaceId: string) => Promise<void>;
+  createSession: (documentId: string | null, title?: string, workspaceId?: string) => Promise<ChatSession>;
   setActiveSession: (id: string) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   updateLastMessage: (content: string) => void;
@@ -244,10 +245,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  createSession: async (documentId: string, title?: string) => {
+  loadWorkspaceSessions: async (workspaceId: string) => {
+    const all = await db.getAllChatSessions();
+    const sessions = all
+      .filter((s) => s.workspaceId === workspaceId)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    set({ sessions });
+    if (sessions.length > 0) {
+      set({ activeSessionId: sessions[0].id, activeSession: sessions[0] });
+    } else {
+      set({ activeSessionId: null, activeSession: null });
+    }
+  },
+
+  createSession: async (documentId: string | null, title?: string, workspaceId?: string) => {
     const session: ChatSession = {
       id: uuid(),
       documentId,
+      workspaceId,
       title: title || `对话 ${get().sessions.length + 1}`,
       messages: [],
       createdAt: Date.now(),
@@ -418,7 +433,8 @@ interface UIStore {
   rightPanelWidth: number;
   showApiKeyAlert: boolean;
   pdfOutline: PdfOutlineItem[];
-  sidebarTab: 'docs' | 'outline';
+  sidebarTab: 'docs' | 'outline' | 'workspaces';
+  activeWorkspaceId: string | null;
   scrollToPdfPage: ((page: number) => void) | null;
   focusMode: boolean;
   tagFilter: string | null;
@@ -429,7 +445,8 @@ interface UIStore {
   setRightPanelWidth: (width: number) => void;
   setShowApiKeyAlert: (show: boolean) => void;
   setPdfOutline: (outline: PdfOutlineItem[]) => void;
-  setSidebarTab: (tab: 'docs' | 'outline') => void;
+  setSidebarTab: (tab: 'docs' | 'outline' | 'workspaces') => void;
+  setActiveWorkspaceId: (id: string | null) => void;
   registerScrollToPdfPage: (fn: ((page: number) => void) | null) => void;
   toggleFocusMode: () => void;
   setTagFilter: (tag: string | null) => void;
@@ -444,6 +461,7 @@ export const useUIStore = create<UIStore>((set) => ({
   showApiKeyAlert: false,
   pdfOutline: [],
   sidebarTab: 'docs',
+  activeWorkspaceId: null,
   scrollToPdfPage: null,
   focusMode: false,
   tagFilter: null,
@@ -455,11 +473,72 @@ export const useUIStore = create<UIStore>((set) => ({
   setShowApiKeyAlert: (show) => set({ showApiKeyAlert: show }),
   setPdfOutline: (outline) => set({ pdfOutline: outline }),
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
+  setActiveWorkspaceId: (id) => set({ activeWorkspaceId: id }),
   registerScrollToPdfPage: (fn) => set({ scrollToPdfPage: fn }),
   toggleFocusMode: () => set((s) => ({ focusMode: !s.focusMode })),
   setTagFilter: (tag) => set({ tagFilter: tag }),
   setHighlightColor: (color) => set({ highlightColor: color }),
   setAnnotationColorFilter: (color) => set({ annotationColorFilter: color }),
+}));
+
+// ─── Workspace Store ───
+interface WorkspaceStore {
+  workspaces: Workspace[];
+  loadWorkspaces: () => Promise<void>;
+  createWorkspace: (name: string) => Promise<Workspace>;
+  updateWorkspace: (id: string, updates: Partial<Workspace>) => Promise<void>;
+  removeWorkspace: (id: string) => Promise<void>;
+  addDocumentToWorkspace: (workspaceId: string, documentId: string) => Promise<void>;
+  removeDocumentFromWorkspace: (workspaceId: string, documentId: string) => Promise<void>;
+}
+
+export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
+  workspaces: [],
+
+  loadWorkspaces: async () => {
+    const workspaces = await db.getAllWorkspaces();
+    set({ workspaces });
+  },
+
+  createWorkspace: async (name: string) => {
+    const ws: Workspace = {
+      id: uuid(),
+      name,
+      documentIds: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await db.saveWorkspace(ws);
+    set({ workspaces: [ws, ...get().workspaces] });
+    return ws;
+  },
+
+  updateWorkspace: async (id, updates) => {
+    const ws = get().workspaces.find((w) => w.id === id);
+    if (!ws) return;
+    const updated = { ...ws, ...updates, updatedAt: Date.now() };
+    await db.saveWorkspace(updated);
+    set({ workspaces: get().workspaces.map((w) => (w.id === id ? updated : w)) });
+  },
+
+  removeWorkspace: async (id) => {
+    await db.deleteWorkspace(id);
+    set({ workspaces: get().workspaces.filter((w) => w.id !== id) });
+  },
+
+  addDocumentToWorkspace: async (workspaceId, documentId) => {
+    const ws = get().workspaces.find((w) => w.id === workspaceId);
+    if (!ws || ws.documentIds.includes(documentId)) return;
+    await get().updateWorkspace(workspaceId, { documentIds: [...ws.documentIds, documentId] });
+  },
+
+  removeDocumentFromWorkspace: async (workspaceId, documentId) => {
+    const ws = get().workspaces.find((w) => w.id === workspaceId);
+    if (!ws) return;
+    await get().updateWorkspace(workspaceId, {
+      documentIds: ws.documentIds.filter((id) => id !== documentId),
+    });
+  },
 }));
 
 // ─── GitHub Sync Store ───

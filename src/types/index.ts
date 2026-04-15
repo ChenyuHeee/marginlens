@@ -56,9 +56,21 @@ export interface ChatMessage {
   isStreaming?: boolean;
 }
 
+export interface Workspace {
+  id: string;
+  name: string;
+  /** Ordered list of document IDs belonging to this workspace */
+  documentIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ChatSession {
   id: string;
-  documentId: string;
+  /** null for workspace-level sessions */
+  documentId: string | null;
+  /** Set when this session belongs to a workspace */
+  workspaceId?: string;
   title: string;
   messages: ChatMessage[];
   createdAt: number;

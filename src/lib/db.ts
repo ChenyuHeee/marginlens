@@ -1,8 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Document, Annotation, ChatSession, AppSettings, ApiUsageRecord } from '@/types';
+import type { Document, Annotation, ChatSession, AppSettings, ApiUsageRecord, Workspace } from '@/types';
 
 const DB_NAME = 'marginlens';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -37,6 +37,12 @@ export function getDB() {
         if (oldVersion < 3) {
           if (!db.objectStoreNames.contains('readProgress')) {
             db.createObjectStore('readProgress', { keyPath: 'documentId' });
+          }
+        }
+        if (oldVersion < 4) {
+          if (!db.objectStoreNames.contains('workspaces')) {
+            const wsStore = db.createObjectStore('workspaces', { keyPath: 'id' });
+            wsStore.createIndex('updatedAt', 'updatedAt');
           }
         }
       },
@@ -115,6 +121,28 @@ export async function saveChatSession(session: ChatSession): Promise<void> {
 export async function deleteChatSession(id: string): Promise<void> {
   const db = await getDB();
   await db.delete('chatSessions', id);
+}
+
+export async function getAllChatSessions(): Promise<ChatSession[]> {
+  const db = await getDB();
+  return db.getAll('chatSessions');
+}
+
+// Workspaces
+export async function getAllWorkspaces(): Promise<Workspace[]> {
+  const db = await getDB();
+  const items = await db.getAll('workspaces');
+  return items.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function saveWorkspace(ws: Workspace): Promise<void> {
+  const db = await getDB();
+  await db.put('workspaces', ws);
+}
+
+export async function deleteWorkspace(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('workspaces', id);
 }
 
 // Settings

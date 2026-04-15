@@ -12,6 +12,8 @@ import {
   Quote,
   Pin,
   Sparkles,
+  FolderOpen,
+  FilePlus,
 } from 'lucide-react';
 import {
   useChatStore,
@@ -19,10 +21,11 @@ import {
   useDocumentStore,
   useAnnotationStore,
   useUIStore,
+  useWorkspaceStore,
 } from '@/stores';
-import { buildSystemMessage } from '@/lib/context';
+import { buildSystemMessage, buildWorkspaceSystemMessage, parseAtMentions, buildMentionContext } from '@/lib/context';
 import { streamChat } from '@/lib/llm';
-import { recordApiUsage } from '@/lib/db';
+import { recordApiUsage, getAnnotationsByDocument } from '@/lib/db';
 
 export function ChatPanel() {
   const {
@@ -38,12 +41,19 @@ export function ChatPanel() {
     deleteSession,
     saveActiveSession,
   } = useChatStore();
-  const { activeDocument } = useDocumentStore();
+  const { activeDocument, documents, addDocumentFromText } = useDocumentStore();
   const { getActiveProvider } = useSettingsStore();
   const { addAnnotation } = useAnnotationStore();
-  const { setRightPanelTab } = useUIStore();
+  const { setRightPanelTab, activeWorkspaceId } = useUIStore();
+  const { workspaces, addDocumentToWorkspace } = useWorkspaceStore();
+
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
+  const workspaceDocs = activeWorkspace
+    ? documents.filter((d) => activeWorkspace.documentIds.includes(d.id))
+    : [];
 
   const [input, setInput] = useState('');
+  const [atSuggestions, setAtSuggestions] = useState<typeof documents>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToHighlight = (text: string) => {
@@ -64,27 +74,75 @@ export function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeSession?.messages]);
 
+  // Detect @mention as user types - show autocomplete suggestions
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    if (activeWorkspace) {
+      const atMatch = value.match(/@([\w\u4e00-\u9fff][\w\u4e00-\u9fff\s.\-:]*)$/);
+      if (atMatch) {
+        const query = atMatch[1].toLowerCase();
+        setAtSuggestions(workspaceDocs.filter((d) => d.title.toLowerCase().includes(query)));
+      } else {
+        setAtSuggestions([]);
+      }
+    }
+  };
+
+  const applyAtSuggestion = (doc: typeof documents[0]) => {
+    setInput((prev) => prev.replace(/@([\w\u4e00-\u9fff][\w\u4e00-\u9fff\s.\-:]*)$/, `@${doc.title} `));
+    setAtSuggestions([]);
+  };
+
   const handleSend = async () => {
-    if (!input.trim() || isStreaming || !activeDocument) return;
+    if (!input.trim() || isStreaming) return;
+    if (!activeDocument && !activeWorkspace) return;
 
     const prompt = input.trim();
     setInput('');
+    setAtSuggestions([]);
 
     let session = activeSession;
     if (!session) {
-      session = await createSession(activeDocument.id);
+      if (activeWorkspace) {
+        session = await createSession(null, undefined, activeWorkspace.id);
+      } else {
+        session = await createSession(activeDocument!.id);
+      }
     }
 
-    const allAnnotations = useAnnotationStore.getState().annotations.filter(a => a.documentId === activeDocument.id);
+    // Build system message on first turn
     if (session.messages.length === 0) {
-      const docText = activeDocument.content || activeDocument.extractedText || '';
-      addMessage({
-        role: 'system',
-        content: buildSystemMessage(docText, allAnnotations),
-      });
+      if (activeWorkspace && session.workspaceId) {
+        // Collect all annotations for workspace docs
+        const annotationsByDoc: Record<string, Awaited<ReturnType<typeof getAnnotationsByDocument>>> = {};
+        await Promise.all(
+          workspaceDocs.map(async (doc) => {
+            annotationsByDoc[doc.id] = await getAnnotationsByDocument(doc.id);
+          })
+        );
+        addMessage({
+          role: 'system',
+          content: buildWorkspaceSystemMessage(activeWorkspace, workspaceDocs, annotationsByDoc),
+        });
+      } else {
+        const allAnnotations = useAnnotationStore.getState().annotations.filter(
+          (a) => a.documentId === activeDocument!.id
+        );
+        const docText = activeDocument!.content || activeDocument!.extractedText || '';
+        addMessage({ role: 'system', content: buildSystemMessage(docText, allAnnotations) });
+      }
     }
 
-    addMessage({ role: 'user', content: prompt });
+    // Resolve @mentions in workspace mode → build hidden context
+    let hiddenContext = '';
+    if (activeWorkspace) {
+      const mentioned = parseAtMentions(prompt, workspaceDocs);
+      for (const doc of mentioned) {
+        hiddenContext += buildMentionContext(doc);
+      }
+    }
+
+    addMessage({ role: 'user', content: prompt, hiddenContext: hiddenContext || undefined });
 
     const provider = getActiveProvider();
     if (!provider || !provider.apiKey) {
@@ -160,16 +218,39 @@ export function ChatPanel() {
     }
   };
 
-  if (!activeDocument) {
+  const handleSaveAsDocument = async (content: string) => {
+    if (!activeWorkspace) return;
+    // Use first heading line as title, or generic name
+    const firstLine = content.split('\n').find((l) => l.trim());
+    const title = firstLine?.startsWith('#')
+      ? firstLine.replace(/^#+\s*/, '').trim()
+      : `AI 生成 · ${new Date().toLocaleDateString('zh-CN')}`;
+    const docId = await addDocumentFromText(title, content);
+    await addDocumentToWorkspace(activeWorkspace.id, docId);
+  };
+
+  if (!activeDocument && !activeWorkspace) {
     return (
       <div className="h-full flex items-center justify-center text-[13px]" style={{ color: 'var(--color-text-tertiary)' }}>
-        请先打开一个文档
+        请先打开一个文档或工作区
       </div>
     );
   }
 
   return (
     <div className="h-full flex flex-col">
+      {/* Workspace indicator */}
+      {activeWorkspace && (
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 flex-shrink-0 text-[11px]"
+          style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', borderBottom: '1px solid var(--color-primary)' }}
+        >
+          <FolderOpen size={11} />
+          <span className="font-medium truncate">{activeWorkspace.name}</span>
+          <span className="opacity-60 ml-auto flex-shrink-0">{workspaceDocs.length} 个文档</span>
+        </div>
+      )}
+
       {/* Session tabs */}
       <div
         className="flex items-center gap-1 px-2 py-1.5 overflow-x-auto flex-shrink-0"
@@ -196,7 +277,13 @@ export function ChatPanel() {
           </button>
         ))}
         <button
-          onClick={() => createSession(activeDocument.id)}
+          onClick={() => {
+            if (activeWorkspace) {
+              createSession(null, undefined, activeWorkspace.id);
+            } else if (activeDocument) {
+              createSession(activeDocument.id);
+            }
+          }}
           className="p-1 rounded-md transition-all"
           title="新建对话"
           style={{ color: 'var(--color-text-tertiary)' }}
@@ -221,13 +308,15 @@ export function ChatPanel() {
               className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
               style={{ background: 'var(--color-primary-light)' }}
             >
-              <Sparkles size={20} style={{ color: 'var(--color-primary)' }} />
+              {activeWorkspace ? <FolderOpen size={20} style={{ color: 'var(--color-primary)' }} /> : <Sparkles size={20} style={{ color: 'var(--color-primary)' }} />}
             </div>
             <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-              开始对话
+              {activeWorkspace ? `工作区对话` : '开始对话'}
             </p>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
-              选中文本提问，或直接在下方输入
+            <p className="text-[11px] mt-1 text-center px-4" style={{ color: 'var(--color-text-tertiary)' }}>
+              {activeWorkspace
+                ? `已加载 ${workspaceDocs.length} 个文档。用 @文档名 引用特定文档全文`
+                : '选中文本提问，或直接在下方输入'}
             </p>
           </div>
         )}
@@ -276,7 +365,18 @@ export function ChatPanel() {
               {msg.role === 'assistant' && !msg.isStreaming && msg.content && (() => {
                 const prevUserMsg = filtered.slice(0, idx).reverse().find(m => m.role === 'user');
                 return (
-                  <div className="mt-2 pt-1.5 flex justify-end" style={{ borderTop: '1px solid var(--color-border)' }}>
+                  <div className="mt-2 pt-1.5 flex justify-end gap-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+                    {activeWorkspace && (
+                      <button
+                        onClick={() => handleSaveAsDocument(msg.content)}
+                        className="flex items-center gap-1 text-[10px] font-medium opacity-40 hover:opacity-80 transition-opacity"
+                        title="保存为工作区文档"
+                        style={{ color: 'var(--color-success, #16a34a)' }}
+                      >
+                        <FilePlus size={9} />
+                        保存为文档
+                      </button>
+                    )}
                     <button
                       onClick={() => handlePinAsAnnotation(msg.content, prevUserMsg?.selectedText, prevUserMsg?.content, prevUserMsg?.positionHint)}
                       className="flex items-center gap-1 text-[10px] font-medium opacity-40 hover:opacity-80 transition-opacity"
@@ -297,6 +397,27 @@ export function ChatPanel() {
 
       {/* Input */}
       <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border)' }}>
+        {/* @mention dropdown */}
+        {atSuggestions.length > 0 && (
+          <div
+            className="mb-1.5 rounded-lg overflow-hidden shadow-lg"
+            style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+          >
+            {atSuggestions.slice(0, 6).map((doc) => (
+              <button
+                key={doc.id}
+                onMouseDown={(e) => { e.preventDefault(); applyAtSuggestion(doc); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-left transition-colors"
+                style={{ color: 'var(--color-text)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-card-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ color: 'var(--color-text-tertiary)', fontSize: 10 }}>{doc.type === 'pdf' ? '📑' : '📄'}</span>
+                {doc.title}
+              </button>
+            ))}
+          </div>
+        )}
         <div
           className="flex items-end gap-2 p-1.5 rounded-xl"
           style={{
@@ -306,9 +427,9 @@ export function ChatPanel() {
         >
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入问题... (Enter 发送)"
+            placeholder={activeWorkspace ? '输入问题，用 @文档名 引用文档... (Enter 发送)' : '输入问题... (Enter 发送)'}
             rows={1}
             className="flex-1 bg-transparent border-none outline-none resize-none"
             style={{

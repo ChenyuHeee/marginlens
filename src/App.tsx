@@ -6,7 +6,7 @@ import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
-import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore, useWorkspaceStore } from '@/stores';
 import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-react';
 
 export default function App() {
@@ -16,12 +16,14 @@ export default function App() {
   const { loadConfig: loadGitHubConfig } = useGitHubSyncStore();
   const { init: initAuth } = useAuthStore();
   const { focusMode, toggleFocusMode } = useUIStore();
+  const { loadWorkspaces } = useWorkspaceStore();
 
   useEffect(() => {
     loadSettings();
     loadDocuments();
     loadGitHubConfig();
     initAuth();
+    loadWorkspaces();
   }, []);
 
   // Theme: apply based on settings or system preference
