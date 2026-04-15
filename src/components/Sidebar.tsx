@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import faviconUrl from '/favicon.svg?url';
 import {
   FileText,
   Plus,
@@ -324,7 +325,7 @@ export function Sidebar() {
           style={{ background: 'none', border: 'none', cursor: 'pointer' }}
         >
           <div className="w-[22px] h-[22px] flex items-center justify-center flex-shrink-0">
-            <img src="/favicon.svg" alt="MarginLens" width={22} height={22} style={{ display: 'block' }} />
+            <img src={faviconUrl} alt="MarginLens" width={22} height={22} style={{ display: 'block' }} />
           </div>
           <span className="font-semibold text-[13px] tracking-tight">MarginLens</span>
         </button>
@@ -346,7 +347,7 @@ export function Sidebar() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex flex-col items-center gap-3 mb-5">
-                <img src="/favicon.svg" alt="MarginLens" width={48} height={48} />
+                <img src={faviconUrl} alt="MarginLens" width={48} height={48} />
                 <div className="text-center">
                   <div className="font-bold text-[17px] tracking-tight" style={{ color: 'var(--color-text)' }}>MarginLens</div>
                   <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>AI-powered reading & annotation</div>
