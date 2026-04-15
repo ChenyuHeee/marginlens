@@ -306,6 +306,11 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
                 handleAskCustom();
               }
               if (e.key === 'Escape') onClose();
+              // Cmd/Ctrl+C with empty input → copy the selected document text
+              if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !customQuestion) {
+                e.preventDefault();
+                navigator.clipboard.writeText(selection.text);
+              }
             }}
             autoFocus
             className="mac-input"
