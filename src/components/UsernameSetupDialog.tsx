@@ -62,7 +62,7 @@ export function UsernameSetupDialog({ open, onComplete }: UsernameSetupDialogPro
             autoFocus
             value={username}
             onChange={(e) => { setUsername(e.target.value); setError(''); }}
-            placeholder="例如：chenyu、张三"
+            placeholder=""
             className="mac-input w-full text-[14px]"
             style={{ height: 40 }}
             maxLength={20}

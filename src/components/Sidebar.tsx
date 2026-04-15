@@ -14,7 +14,6 @@ import {
   Loader2,
   X,
   User,
-  LogOut,
   RefreshCw,
   Cloud,
   Pin,
@@ -39,6 +38,8 @@ import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuth
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthDialog } from './AuthDialog';
 import { ApiMonitorPanel } from './ApiMonitorPanel';
+import { AccountDialog } from './AccountDialog';
+import { getMyProfile } from '@/lib/profiles';
 import { MarkdownOutline, PdfOutline } from './OutlinePanel';
 
 const GitHubIcon = ({ size = 14 }: { size?: number }) => (
@@ -63,8 +64,14 @@ export function Sidebar() {
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
   const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline, tagFilter, setTagFilter, activeWorkspaceId, setActiveWorkspaceId } = useUIStore();
-  const { user, syncing: cloudSyncing, lastSyncedAt, syncError, signOut, syncNow } = useAuthStore();
+  const { user, syncing: cloudSyncing, lastSyncedAt, syncError, syncNow } = useAuthStore();
   const { workspaces, loadWorkspaces, createWorkspace, removeWorkspace, addDocumentToWorkspace, removeDocumentFromWorkspace } = useWorkspaceStore();
+
+  // Load display name whenever user changes
+  useEffect(() => {
+    if (!user) { setDisplayName(null); return; }
+    getMyProfile().then((p) => setDisplayName(p?.username ?? null));
+  }, [user?.id]);
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -73,6 +80,8 @@ export function Sidebar() {
   const [urlError, setUrlError] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>(loadSort);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -1141,27 +1150,25 @@ export function Sidebar() {
         >
           {user ? (
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
+              {/* Account row — click to open AccountDialog */}
+              <button
+                onClick={() => setAccountOpen(true)}
+                className="w-full flex items-center gap-2 rounded-lg px-1 py-1 transition-colors text-left"
+                style={{ color: 'var(--color-text-secondary)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                title="查看 / 编辑账户信息"
+              >
                 <div
                   className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}
                 >
                   <User size={11} />
                 </div>
-                <span className="text-[11px] truncate flex-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  {user.email}
+                <span className="text-[11px] truncate flex-1">
+                  {displayName ?? user.email}
                 </span>
-                <button
-                  onClick={() => signOut()}
-                  className="p-1 rounded transition-colors"
-                  style={{ color: 'var(--color-text-tertiary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-danger)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
-                  title="退出登录"
-                >
-                  <LogOut size={12} />
-                </button>
-              </div>
+              </button>
               <button
                 onClick={() => syncNow()}
                 disabled={cloudSyncing}
@@ -1197,6 +1204,10 @@ export function Sidebar() {
 
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
       <ApiMonitorPanel open={monitorOpen} onClose={() => setMonitorOpen(false)} />
+      <AccountDialog open={accountOpen} onClose={() => {
+        setAccountOpen(false);
+        if (user) getMyProfile().then((p) => setDisplayName(p?.username ?? null));
+      }} />
     </div>
   );
 }
