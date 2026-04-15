@@ -34,11 +34,18 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     set({ loading: true });
     const documents = await db.getAllDocuments();
     set({ documents, loading: false });
+    // Restore last opened document
+    const lastId = localStorage.getItem('marginlens:lastDocumentId');
+    if (lastId && documents.some((d) => d.id === lastId)) {
+      const doc = await db.getDocument(lastId);
+      if (doc) set({ activeDocumentId: lastId, activeDocument: doc });
+    }
   },
 
   openDocument: async (id: string) => {
     const doc = await db.getDocument(id);
     if (doc) {
+      localStorage.setItem('marginlens:lastDocumentId', id);
       set({ activeDocumentId: id, activeDocument: doc });
     }
   },
@@ -116,6 +123,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     const { activeDocumentId } = get();
     const documents = await db.getAllDocuments();
     if (activeDocumentId === id) {
+      localStorage.removeItem('marginlens:lastDocumentId');
       set({ documents, activeDocumentId: null, activeDocument: null });
     } else {
       set({ documents });

@@ -395,8 +395,9 @@ function highlightText(
   const textNodes: Text[] = [];
   let node: Node | null;
   while ((node = walker.nextNode())) {
-    // Skip text nodes inside inline-annotation blocks
-    if ((node as Node).parentElement?.closest('.inline-annotation')) continue;
+    // Skip text nodes inside inline-annotation blocks or annotation portals
+    // (matches the same skip logic as getRangeOffsets, so offsets stay in sync)
+    if ((node as Node).parentElement?.closest('.inline-annotation, .annotation-portal')) continue;
     textNodes.push(node as Text);
   }
 
@@ -418,11 +419,12 @@ function highlightText(
     preferredStart >= 0 &&
     preferredEnd > preferredStart;
 
-  if (hasPreferredRange) {
+  if (hasPreferredRange && accumulated.slice(preferredStart, preferredEnd) === text) {
     targetStart = preferredStart;
     targetEnd = preferredEnd;
   } else {
-    const idx = findBestMatchIndex(accumulated, text, preferredStart);
+    // Offsets stale or missing — fall back to nearest-occurrence search
+    const idx = findBestMatchIndex(accumulated, text, hasPreferredRange ? preferredStart : undefined);
     if (idx === -1) return;
     targetStart = idx;
     targetEnd = idx + text.length;
