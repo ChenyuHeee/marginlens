@@ -29,6 +29,7 @@ import {
   FolderPlus,
   ChevronRight,
   ChevronDown,
+  Github,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore, useWorkspaceStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -316,19 +317,36 @@ export function Sidebar() {
         className="flex items-center justify-between px-4 h-[52px] flex-shrink-0"
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
-        <button
-          className="flex items-center gap-2.5 rounded-lg px-1 -mx-1 transition-all"
-          onClick={() => setShowAbout(true)}
-          title="关于 MarginLens"
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-        >
-          <div className="w-[22px] h-[22px] flex items-center justify-center flex-shrink-0">
-            <img src={faviconUrl} alt="MarginLens" width={22} height={22} style={{ display: 'block' }} />
-          </div>
-          <span className="font-semibold text-[13px] tracking-tight">MarginLens</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="flex items-center gap-2.5 rounded-lg px-1 -mx-1 transition-all"
+            onClick={() => setShowAbout(true)}
+            title="关于 MarginLens"
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            <div className="w-[22px] h-[22px] flex items-center justify-center flex-shrink-0">
+              <img src={faviconUrl} alt="MarginLens" width={22} height={22} style={{ display: 'block' }} />
+            </div>
+            <span className="font-semibold text-[13px] tracking-tight">MarginLens</span>
+          </button>
+
+          {/* GitHub repo link */}
+          <a
+            href="https://github.com/ChenyuHeee/marginlens"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="GitHub 仓库"
+            className="p-1 rounded-md transition-all"
+            style={{ color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; (e.currentTarget as HTMLElement).style.background = 'var(--color-card-hover)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Github size={13} />
+          </a>
+        </div>
 
         {/* About modal */}
         {showAbout && (
@@ -356,7 +374,16 @@ export function Sidebar() {
               <div className="space-y-2 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
                 <div className="flex justify-between">
                   <span style={{ color: 'var(--color-text-tertiary)' }}>Author</span>
-                  <span className="font-medium" style={{ color: 'var(--color-text)' }}>Chenyu He</span>
+                  <a
+                    href="https://github.com/ChenyuHeee"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 font-medium hover:underline"
+                    style={{ color: 'var(--color-text)' }}
+                  >
+                    <Github size={11} />
+                    Chenyu He
+                  </a>
                 </div>
                 <div className="flex justify-between">
                   <span style={{ color: 'var(--color-text-tertiary)' }}>Affiliation</span>
