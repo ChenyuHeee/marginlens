@@ -250,6 +250,46 @@ export async function pullSettings(userId: string): Promise<boolean> {
   return true;
 }
 
+// ─── Read Progress sync (stored inside user_settings as read_progress field) ───
+
+export async function pushReadProgress(userId: string): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+
+  const records = await db.getAllReadProgress();
+  if (records.length === 0) return;
+
+  // Serialize as a map: { [docId]: { scrollTop?, page?, updatedAt } }
+  const map: Record<string, { scrollTop?: number; page?: number; updatedAt: number }> = {};
+  for (const r of records) map[r.documentId] = { scrollTop: r.scrollTop, page: r.page, updatedAt: r.updatedAt };
+
+  const { error } = await supabase
+    .from('user_settings')
+    .upsert({ user_id: userId, read_progress: map, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) throw new Error(`Push read_progress failed: ${error.message}`);
+}
+
+export async function pullReadProgress(userId: string): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('read_progress')
+    .eq('user_id', userId)
+    .single();
+  if (error || !data?.read_progress) return;
+
+  const map = data.read_progress as Record<string, { scrollTop?: number; page?: number; updatedAt: number }>;
+  for (const [documentId, val] of Object.entries(map)) {
+    const local = await db.getReadProgress(documentId);
+    // Prefer whichever was updated more recently
+    if (!local || val.updatedAt > local.updatedAt) {
+      await db.saveReadProgress({ documentId, scrollTop: val.scrollTop, page: val.page, updatedAt: val.updatedAt });
+    }
+  }
+}
+
 // ─── Full sync ───
 
 // ─── API Usage sync ───
@@ -327,6 +367,7 @@ export async function fullSync(userId: string): Promise<SyncResult> {
     settings: await pullSettings(userId),
     apiUsage: await pullApiUsage(userId),
   };
+  await pullReadProgress(userId);
 
   const pushed = {
     documents: await pushDocuments(userId),
@@ -335,6 +376,7 @@ export async function fullSync(userId: string): Promise<SyncResult> {
     settings: (await pushSettings(userId), true),
     apiUsage: await pushApiUsage(userId),
   };
+  await pushReadProgress(userId);
 
   return { pushed, pulled };
 }

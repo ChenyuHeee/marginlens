@@ -2,7 +2,7 @@ import { openDB, type IDBPDatabase } from 'idb';
 import type { Document, Annotation, ChatSession, AppSettings, ApiUsageRecord } from '@/types';
 
 const DB_NAME = 'marginlens';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -32,6 +32,11 @@ export function getDB() {
           if (!db.objectStoreNames.contains('apiUsage')) {
             const usageStore = db.createObjectStore('apiUsage', { keyPath: 'id' });
             usageStore.createIndex('date', 'date');
+          }
+        }
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains('readProgress')) {
+            db.createObjectStore('readProgress', { keyPath: 'documentId' });
           }
         }
       },
@@ -177,4 +182,28 @@ export async function recordApiUsage(
 export async function clearApiUsage(): Promise<void> {
   const db = await getDB();
   await db.clear('apiUsage');
+}
+
+// Read Progress
+export interface ReadProgress {
+  documentId: string;
+  /** scrollTop in px for markdown; page number for PDF */
+  scrollTop?: number;
+  page?: number;
+  updatedAt: number;
+}
+
+export async function getReadProgress(documentId: string): Promise<ReadProgress | undefined> {
+  const db = await getDB();
+  return db.get('readProgress', documentId);
+}
+
+export async function saveReadProgress(progress: ReadProgress): Promise<void> {
+  const db = await getDB();
+  await db.put('readProgress', progress);
+}
+
+export async function getAllReadProgress(): Promise<ReadProgress[]> {
+  const db = await getDB();
+  return db.getAll('readProgress');
 }

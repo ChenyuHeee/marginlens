@@ -405,15 +405,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 }));
 
 // ─── UI Store ───
+export interface PdfOutlineItem {
+  title: string;
+  dest: unknown;
+  items?: PdfOutlineItem[];
+  children: PdfOutlineItem[];
+}
+
 interface UIStore {
   sidebarOpen: boolean;
   rightPanelTab: 'chat' | 'annotations' | 'translate';
   rightPanelWidth: number;
   showApiKeyAlert: boolean;
+  pdfOutline: PdfOutlineItem[];
+  sidebarTab: 'docs' | 'outline';
+  scrollToPdfPage: ((page: number) => void) | null;
   toggleSidebar: () => void;
   setRightPanelTab: (tab: 'chat' | 'annotations' | 'translate') => void;
   setRightPanelWidth: (width: number) => void;
   setShowApiKeyAlert: (show: boolean) => void;
+  setPdfOutline: (outline: PdfOutlineItem[]) => void;
+  setSidebarTab: (tab: 'docs' | 'outline') => void;
+  registerScrollToPdfPage: (fn: ((page: number) => void) | null) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -421,10 +434,16 @@ export const useUIStore = create<UIStore>((set) => ({
   rightPanelTab: 'chat',
   rightPanelWidth: 420,
   showApiKeyAlert: false,
+  pdfOutline: [],
+  sidebarTab: 'docs',
+  scrollToPdfPage: null,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
   setRightPanelWidth: (width) => set({ rightPanelWidth: Math.max(300, Math.min(800, width)) }),
   setShowApiKeyAlert: (show) => set({ showApiKeyAlert: show }),
+  setPdfOutline: (outline) => set({ pdfOutline: outline }),
+  setSidebarTab: (tab) => set({ sidebarTab: tab }),
+  registerScrollToPdfPage: (fn) => set({ scrollToPdfPage: fn }),
 }));
 
 // ─── GitHub Sync Store ───

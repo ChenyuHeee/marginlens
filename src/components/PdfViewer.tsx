@@ -6,6 +6,7 @@ import { useSelectionStore, useAnnotationStore, useDocumentStore, useUIStore } f
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
+import { getReadProgress, saveReadProgress } from '@/lib/db';
 
 // Configure worker using Vite's ?worker import for reliable cross-browser loading
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
@@ -104,6 +105,34 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         setCurrentPage(1);
         setLoading(false);
 
+        // Fetch PDF outline/bookmarks and push to UIStore
+        pdf.getOutline().then((outline) => {
+          const raw = outline ?? [];
+          // Normalise: pdfjs uses `items` but our type uses `children`
+          const normalise = (arr: unknown[]): import('@/stores').PdfOutlineItem[] =>
+            arr.map((n: unknown) => {
+              const node = n as { title: string; dest: unknown; items?: unknown[]; children?: unknown[] };
+              return {
+                title: node.title ?? '',
+                dest: node.dest,
+                children: normalise(node.items ?? node.children ?? []),
+              };
+            });
+          useUIStore.getState().setPdfOutline(normalise(raw));
+        }).catch(() => {
+          useUIStore.getState().setPdfOutline([]);
+        });
+
+        // Restore read progress after pages render
+        getReadProgress(doc.id).then((p) => {
+          if (p?.page && p.page > 1) {
+            setTimeout(() => {
+              const el = pageRefs.current.get(p.page!);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 400);
+          }
+        });
+
         // Extract full text for LLM context if not already done
         if (!doc.extractedText) {
           const pages: string[] = [];
@@ -132,6 +161,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     loadPdf();
     return () => {
       cancelled = true;
+      useUIStore.getState().setPdfOutline([]);
     };
   }, [doc.id, doc.pdfData]);
 
@@ -354,6 +384,13 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     return () => observer.disconnect();
   }, [numPages]);
 
+  // Save current page as read progress
+  useEffect(() => {
+    if (currentPage > 1 || numPages > 0) {
+      saveReadProgress({ documentId: doc.id, page: currentPage, updatedAt: Date.now() });
+    }
+  }, [currentPage, doc.id, numPages]);
+
   // Handle text selection
   const handleMouseUp = useCallback(() => {
     requestAnimationFrame(() => {
@@ -469,6 +506,36 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  // Register scrollToPage so the sidebar outline can navigate
+  useEffect(() => {
+    useUIStore.getState().registerScrollToPdfPage(scrollToPage);
+    return () => useUIStore.getState().registerScrollToPdfPage(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle bookmark navigation from OutlinePanel via custom event
+  useEffect(() => {
+    if (!pdfDoc) return;
+    const handler = async (e: Event) => {
+      const { dest } = (e as CustomEvent<{ dest: unknown }>).detail;
+      try {
+        let resolved = dest;
+        if (typeof dest === 'string') {
+          resolved = await pdfDoc.getDestination(dest);
+        }
+        if (Array.isArray(resolved) && resolved[0]) {
+          const pageIndex = await pdfDoc.getPageIndex(resolved[0] as { num: number; gen: number });
+          scrollToPage(pageIndex + 1);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('outline-navigate', handler);
+    return () => window.removeEventListener('outline-navigate', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfDoc]);
 
   if (loading) {
     return (

@@ -21,11 +21,13 @@ import {
   Check,
   ArrowUpDown,
   BarChart2,
+  List,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthDialog } from './AuthDialog';
 import { ApiMonitorPanel } from './ApiMonitorPanel';
+import { MarkdownOutline, PdfOutline } from './OutlinePanel';
 
 type SortKey = 'updatedAt' | 'title' | 'type' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -39,10 +41,10 @@ function loadSort(): { key: SortKey; dir: SortDir } {
 }
 
 export function Sidebar() {
-  const { documents, activeDocumentId, openDocument, addDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
+  const { documents, activeDocumentId, activeDocument, openDocument, addDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline } = useUIStore();
   const { user, syncing: cloudSyncing, lastSyncedAt, syncError, signOut, syncNow } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -351,6 +353,51 @@ export function Sidebar() {
         </div>
       )}
 
+      {/* Tab switcher: docs / outline */}
+      {activeDocument && (
+        <div className="px-3 pb-1 flex gap-1">
+          <button
+            onClick={() => setSidebarTab('docs')}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
+            style={{
+              background: sidebarTab === 'docs' ? 'var(--color-primary-light)' : 'transparent',
+              color: sidebarTab === 'docs' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
+            }}
+          >
+            <FileText size={11} />
+            文档
+          </button>
+          <button
+            onClick={() => setSidebarTab('outline')}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
+            style={{
+              background: sidebarTab === 'outline' ? 'var(--color-primary-light)' : 'transparent',
+              color: sidebarTab === 'outline' ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
+            }}
+          >
+            <List size={11} />
+            目录
+          </button>
+        </div>
+      )}
+
+      {/* Outline panel (replaces doc list when tab = outline) */}
+      {sidebarTab === 'outline' && activeDocument ? (
+        <div className="flex-1 overflow-y-auto pb-2">
+          <div className="px-3 pt-1 pb-2 flex items-center">
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
+              {activeDocument.title}
+            </span>
+          </div>
+          {activeDocument.type === 'pdf' ? (
+            <PdfOutline outline={pdfOutline} />
+          ) : (
+            <MarkdownOutline content={activeDocument.content || ''} />
+          )}
+        </div>
+      ) : (
+        <>
+
       {/* Section label + sort */}
       <div className="px-3 pt-1 pb-1 flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -523,6 +570,9 @@ export function Sidebar() {
           </div>
         )}
       </div>
+
+        </> // closes the else branch (sidebarTab !== 'outline')
+      )}
 
       {/* API Monitor button */}
       <div

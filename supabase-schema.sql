@@ -76,6 +76,7 @@ create index if not exists idx_chat_sessions_document on public.chat_sessions(do
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   settings jsonb not null default '{}'::jsonb,
+  read_progress jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 

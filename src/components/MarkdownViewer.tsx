@@ -11,6 +11,7 @@ import { useSelectionStore, useAnnotationStore, useSettingsStore } from '@/store
 import type { SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { InlineAnnotation } from './InlineAnnotation';
+import { getReadProgress, saveReadProgress } from '@/lib/db';
 
 /** Scroll to and expand the inline annotation for a given annotation ID */
 function activateAnnotationHighlight(annotationId: string) {
@@ -31,6 +32,39 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   const [popupSelection, setPopupSelection] = useState<SelectionInfo | null>(null);
   // Portal containers: annotationId → DOM element inserted after highlighted paragraph
   const [portalContainers, setPortalContainers] = useState<Map<string, HTMLElement>>(new Map());
+
+  // ── Read progress: restore scroll on mount, save scroll on scroll ──
+  const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Restore scroll when document changes
+  useEffect(() => {
+    const el = document.getElementById('markdown-scroll-container');
+    if (!el) return;
+    getReadProgress(documentId).then((p) => {
+      if (p?.scrollTop) {
+        el.scrollTop = p.scrollTop;
+      } else {
+        el.scrollTop = 0;
+      }
+    });
+  }, [documentId]);
+
+  // Save scroll on scroll (debounced 500ms)
+  useEffect(() => {
+    const el = document.getElementById('markdown-scroll-container');
+    if (!el) return;
+    const handleScroll = () => {
+      if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current);
+      scrollSaveTimer.current = setTimeout(() => {
+        saveReadProgress({ documentId, scrollTop: el.scrollTop, updatedAt: Date.now() });
+      }, 500);
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', handleScroll);
+      if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current);
+    };
+  }, [documentId]);
 
   const docAnnotations = annotations
     .filter((a) => a.documentId === documentId)
