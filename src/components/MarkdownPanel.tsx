@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check } from 'lucide-react';
+import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check, X } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
 import { SyncDialog } from './SyncDialog';
 import { useDocumentStore, useAnnotationStore, useGitHubSyncStore, useUIStore } from '@/stores';
 import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
-import { createShare, buildShareUrl } from '@/lib/share';
+import { createShare, buildShareUrl, type ShareMode, type AccessMode } from '@/lib/share';
 import { getAnnotationsByDocument } from '@/lib/db';
 
 interface MarkdownPanelProps {
@@ -58,22 +58,51 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   const { focusMode, toggleFocusMode } = useUIStore();
 
   // Share
-  const [shareLoading, setShareLoading] = useState(false);
-  const [shareDialog, setShareDialog] = useState<{ url: string } | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareMode, setShareMode] = useState<ShareMode>('readonly');
+  const [accessMode, setAccessMode] = useState<AccessMode>('public');
+  const [allowedEmails, setAllowedEmails] = useState<string[]>([]);
+  const [emailInput, setEmailInput] = useState('');
+  const [shareGenerating, setShareGenerating] = useState(false);
+  const [shareResult, setShareResult] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
-  const handleShare = async () => {
-    setShareLoading(true);
+  const openShareDialog = () => {
+    setShareMode('readonly');
+    setAccessMode('public');
+    setAllowedEmails([]);
+    setEmailInput('');
+    setShareResult(null);
+    setShareCopied(false);
+    setShareOpen(true);
+  };
+
+  const addEmail = () => {
+    const e = emailInput.trim().toLowerCase();
+    if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !allowedEmails.includes(e)) {
+      setAllowedEmails((prev) => [...prev, e]);
+    }
+    setEmailInput('');
+    emailInputRef.current?.focus();
+  };
+
+  const handleGenerateShare = async () => {
+    setShareGenerating(true);
     try {
       const doc = useDocumentStore.getState().activeDocument;
       if (!doc) return;
       const anns = await getAnnotationsByDocument(documentId);
-      const token = await createShare(doc.title, editContent, anns);
-      setShareDialog({ url: buildShareUrl(token) });
+      const token = await createShare(doc.title, editContent, anns, {
+        shareMode,
+        accessMode,
+        allowedEmails,
+      });
+      setShareResult(buildShareUrl(token));
     } catch (err) {
       alert('分享失败：' + (err instanceof Error ? err.message : String(err)));
     } finally {
-      setShareLoading(false);
+      setShareGenerating(false);
     }
   };
 
@@ -168,11 +197,10 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
             </button>
           )}
           <button
-            onClick={handleShare}
+            onClick={openShareDialog}
             className="mac-btn flex items-center gap-1"
             style={{ fontSize: 11, padding: '3px 10px' }}
-            title="生成分享链接"
-            disabled={shareLoading}
+            title="分享文档"
           >
             <Share2 size={11} />
             分享
@@ -218,14 +246,14 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
       />
 
       {/* Share dialog */}
-      {shareDialog && createPortal(
+      {shareOpen && createPortal(
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
-          onClick={() => { setShareDialog(null); setShareCopied(false); }}
+          onClick={() => setShareOpen(false)}
         >
           <div
-            className="rounded-2xl p-6 w-[380px]"
+            className="rounded-2xl p-6 w-[420px] space-y-5"
             style={{
               background: 'var(--color-bg-elevated)',
               border: '1px solid var(--color-border-strong)',
@@ -233,44 +261,164 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 mb-4">
-              <Share2 size={16} style={{ color: 'var(--color-primary)' }} />
-              <span className="font-semibold text-[15px]" style={{ color: 'var(--color-text)' }}>分享文档</span>
-            </div>
-            <div className="text-[12px] mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-              已生成只读分享链接，任何人可通过该链接查看文档及批注。
-            </div>
-            <div
-              className="flex items-center gap-2 rounded-lg px-3 py-2 mb-4"
-              style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
-            >
-              <span className="flex-1 text-[11px] truncate font-mono" style={{ color: 'var(--color-text-secondary)' }}>
-                {shareDialog.url}
-              </span>
-              <button
-                onClick={() => { navigator.clipboard.writeText(shareDialog.url); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); }}
-                className="flex-shrink-0 p-1.5 rounded-md"
-                style={{ color: shareCopied ? 'var(--color-success, #22c55e)' : 'var(--color-primary)' }}
-              >
-                {shareCopied ? <Check size={13} /> : <Copy size={13} />}
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Share2 size={16} style={{ color: 'var(--color-primary)' }} />
+                <span className="font-semibold text-[15px]" style={{ color: 'var(--color-text)' }}>分享文档</span>
+              </div>
+              <button onClick={() => setShareOpen(false)} style={{ color: 'var(--color-text-tertiary)' }}>
+                <X size={16} />
               </button>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { navigator.clipboard.writeText(shareDialog.url); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); }}
-                className="flex-1 mac-btn justify-center gap-1.5 text-[12px] py-1.5"
-                style={{ background: 'var(--color-primary)', color: '#fff', border: 'none' }}
-              >
-                {shareCopied ? <Check size={12} /> : <Copy size={12} />}
-                {shareCopied ? '已复制' : '复制链接'}
-              </button>
-              <button
-                onClick={() => { setShareDialog(null); setShareCopied(false); }}
-                className="mac-btn text-[12px] py-1.5 px-4"
-              >
-                关闭
-              </button>
-            </div>
+
+            {shareResult ? (
+              /* ── Result step: show URL ── */
+              <div className="space-y-4">
+                <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                  链接已生成，{accessMode === 'public' ? '任何人' : '指定用户'}可通过此链接
+                  {shareMode === 'import' ? '查看并导入' : '查看'}文档。
+                </p>
+                <div
+                  className="flex items-center gap-2 rounded-lg px-3 py-2"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
+                >
+                  <span className="flex-1 text-[11px] truncate font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                    {shareResult}
+                  </span>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(shareResult); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); }}
+                    style={{ color: shareCopied ? 'var(--color-success, #22c55e)' : 'var(--color-primary)', flexShrink: 0 }}
+                  >
+                    {shareCopied ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(shareResult); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); }}
+                    className="flex-1 mac-btn justify-center gap-1.5 text-[12px] py-1.5"
+                    style={{ background: 'var(--color-primary)', color: '#fff', border: 'none' }}
+                  >
+                    {shareCopied ? <Check size={12} /> : <Copy size={12} />}
+                    {shareCopied ? '已复制' : '复制链接'}
+                  </button>
+                  <button
+                    onClick={() => setShareOpen(false)}
+                    className="mac-btn text-[12px] py-1.5 px-4"
+                  >
+                    完成
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Config step ── */
+              <>
+                {/* Step 1: Share mode */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>分享模式</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { value: 'readonly', emoji: '👁', label: '只读', desc: '对方只能浏览，无法导入' },
+                      { value: 'import', emoji: '📥', label: '可导入', desc: '对方可一键导入到自己的文档库' },
+                    ] as const).map(({ value, emoji, label, desc }) => (
+                      <button
+                        key={value}
+                        onClick={() => setShareMode(value)}
+                        className="text-left p-3 rounded-xl transition-all"
+                        style={{
+                          border: shareMode === value ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
+                          background: shareMode === value ? 'var(--color-primary-subtle)' : 'var(--color-bg)',
+                        }}
+                      >
+                        <div className="text-[18px] mb-1">{emoji}</div>
+                        <div className="text-[12px] font-semibold" style={{ color: 'var(--color-text)' }}>{label}</div>
+                        <div className="text-[10px] mt-0.5 leading-tight" style={{ color: 'var(--color-text-tertiary)' }}>{desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Step 2: Access control */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>访问权限</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { value: 'public', emoji: '🌐', label: '所有人', desc: '包括未登录的访客' },
+                      { value: 'restricted', emoji: '🔒', label: '指定用户', desc: '仅限你填写的邮箱用户' },
+                    ] as const).map(({ value, emoji, label, desc }) => (
+                      <button
+                        key={value}
+                        onClick={() => setAccessMode(value)}
+                        className="text-left p-3 rounded-xl transition-all"
+                        style={{
+                          border: accessMode === value ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
+                          background: accessMode === value ? 'var(--color-primary-subtle)' : 'var(--color-bg)',
+                        }}
+                      >
+                        <div className="text-[18px] mb-1">{emoji}</div>
+                        <div className="text-[12px] font-semibold" style={{ color: 'var(--color-text)' }}>{label}</div>
+                        <div className="text-[10px] mt-0.5 leading-tight" style={{ color: 'var(--color-text-tertiary)' }}>{desc}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Email input for restricted */}
+                  {accessMode === 'restricted' && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex gap-2">
+                        <input
+                          ref={emailInputRef}
+                          value={emailInput}
+                          onChange={(e) => setEmailInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addEmail(); } }}
+                          placeholder="输入邮箱后按回车添加…"
+                          className="mac-input flex-1 text-[12px]"
+                          style={{ height: 32 }}
+                        />
+                        <button
+                          onClick={addEmail}
+                          className="mac-btn text-[12px] px-3"
+                          style={{ height: 32 }}
+                        >
+                          添加
+                        </button>
+                      </div>
+                      {allowedEmails.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {allowedEmails.map((email) => (
+                            <span
+                              key={email}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]"
+                              style={{ background: 'var(--color-primary-subtle)', color: 'var(--color-primary)', border: '1px solid var(--color-primary-light)' }}
+                            >
+                              {email}
+                              <button onClick={() => setAllowedEmails((prev) => prev.filter((e) => e !== email))}>
+                                <X size={10} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {allowedEmails.length === 0 && (
+                        <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                          至少添加一个邮箱
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Generate button */}
+                <button
+                  onClick={handleGenerateShare}
+                  disabled={shareGenerating || (accessMode === 'restricted' && allowedEmails.length === 0)}
+                  className="w-full mac-btn justify-center text-[13px] py-2"
+                  style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', opacity: (shareGenerating || (accessMode === 'restricted' && allowedEmails.length === 0)) ? 0.5 : 1 }}
+                >
+                  {shareGenerating ? '生成中…' : '生成分享链接'}
+                </button>
+              </>
+            )}
           </div>
         </div>,
         document.body

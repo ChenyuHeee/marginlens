@@ -1,13 +1,25 @@
 import { getSupabase } from './supabase';
 import type { Annotation } from '@/types';
 
+export type ShareMode = 'readonly' | 'import';
+export type AccessMode = 'public' | 'restricted';
+
 export interface SharedDocument {
   id: string;
   title: string;
   content: string;
   annotations: Pick<Annotation, 'id' | 'selectedText' | 'contextBefore' | 'contextAfter' | 'comment' | 'llmResponse' | 'color' | 'positionHint'>[];
   author_name: string | null;
+  share_mode: ShareMode;
+  access_mode: AccessMode;
+  allowed_emails: string[];
   created_at: string;
+}
+
+export interface ShareOptions {
+  shareMode?: ShareMode;
+  accessMode?: AccessMode;
+  allowedEmails?: string[];
 }
 
 /** Generate a random short token */
@@ -27,12 +39,15 @@ export async function createShare(
   title: string,
   content: string,
   annotations: Annotation[],
+  options: ShareOptions = {},
 ): Promise<string> {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase not configured');
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('请先登录以分享文档');
+
+  const { shareMode = 'readonly', accessMode = 'public', allowedEmails = [] } = options;
 
   const id = randomToken(10);
   const annData = annotations.map(({ id: aId, selectedText, contextBefore, contextAfter, comment, llmResponse, color, positionHint }) => ({
@@ -48,6 +63,9 @@ export async function createShare(
     annotations: annData,
     created_by: user.id,
     author_name,
+    share_mode: shareMode,
+    access_mode: accessMode,
+    allowed_emails: allowedEmails,
   });
 
   if (error) throw new Error(`分享失败: ${error.message}`);
@@ -63,7 +81,7 @@ export async function loadShare(token: string): Promise<SharedDocument | null> {
 
   const { data, error } = await supabase
     .from('shared_documents')
-    .select('id, title, content, annotations, author_name, created_at')
+    .select('id, title, content, annotations, author_name, share_mode, access_mode, allowed_emails, created_at')
     .eq('id', token)
     .single();
 

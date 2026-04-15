@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import { loadShare, type SharedDocument } from '@/lib/share';
+import { useDocumentStore, useAnnotationStore } from '@/stores';
 import faviconUrl from '/favicon.svg?url';
 
 interface ShareViewProps {
@@ -16,16 +17,43 @@ export function ShareView({ token }: ShareViewProps) {
   const [doc, setDoc] = useState<SharedDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState(false);
 
   useEffect(() => {
     loadShare(token)
       .then((d) => {
         if (d) setDoc(d);
-        else setError('链接已失效或文档不存在');
+        else setError('链接已失效、文档不存在，或你没有访问权限');
       })
       .catch(() => setError('加载失败，请稍后重试'))
       .finally(() => setLoading(false));
   }, [token]);
+
+  const handleImport = async () => {
+    if (!doc) return;
+    setImporting(true);
+    try {
+      const docId = await useDocumentStore.getState().addDocumentFromText(doc.title, doc.content);
+      for (const ann of doc.annotations) {
+        await useAnnotationStore.getState().addAnnotation({
+          documentId: docId,
+          selectedText: ann.selectedText,
+          contextBefore: ann.contextBefore || '',
+          contextAfter: ann.contextAfter || '',
+          comment: ann.comment || '',
+          llmResponse: ann.llmResponse || '',
+          color: ann.color,
+          positionHint: ann.positionHint,
+        });
+      }
+      setImported(true);
+    } catch {
+      alert('导入失败，请稍后重试');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -69,16 +97,37 @@ export function ShareView({ token }: ShareViewProps) {
             className="text-[10px] px-1.5 py-0.5 rounded"
             style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', fontWeight: 500 }}
           >
-            共享只读
+            {doc.share_mode === 'import' ? '共享 · 可导入' : '共享只读'}
           </span>
         </div>
-        <a
-          href={window.location.pathname}
-          className="text-[11px] font-medium transition-opacity hover:opacity-70"
-          style={{ color: 'var(--color-primary)' }}
-        >
-          打开 MarginLens →
-        </a>
+        <div className="flex items-center gap-3">
+          {doc.share_mode === 'import' && (
+            imported ? (
+              <span className="text-[12px] font-medium" style={{ color: 'var(--color-success, #22c55e)' }}>
+                ✓ 已导入到文档库
+              </span>
+            ) : (
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="mac-btn flex items-center gap-1.5 text-[12px] font-medium"
+                style={{ padding: '5px 14px', background: 'var(--color-primary)', color: '#fff', border: 'none' }}
+              >
+                {importing ? (
+                  <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                ) : '＋'}
+                导入到我的文档库
+              </button>
+            )
+          )}
+          <a
+            href={window.location.pathname}
+            className="text-[11px] font-medium transition-opacity hover:opacity-70"
+            style={{ color: 'var(--color-primary)' }}
+          >
+            打开 MarginLens →
+          </a>
+        </div>
       </div>
 
       {/* Content */}
