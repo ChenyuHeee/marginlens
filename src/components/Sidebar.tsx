@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import faviconUrl from '/favicon.svg?url';
 import {
   FileText,
@@ -353,8 +354,8 @@ export function Sidebar() {
           </a>
         </div>
 
-        {/* About modal */}
-        {showAbout && (
+        {/* About modal — rendered via portal so Safari fixed positioning works outside sidebar */}
+        {showAbout && createPortal(
           <div
             className="fixed inset-0 z-[200] flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
@@ -412,7 +413,8 @@ export function Sidebar() {
                 关闭
               </button>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
         <button
           onClick={toggleSidebar}
