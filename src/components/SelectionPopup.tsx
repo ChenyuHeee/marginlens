@@ -59,12 +59,13 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
 
     let hiddenContext = '';
     if (selectedText) {
-      hiddenContext += `用户选中的文本：\n"${selectedText}"\n\n`;
+      hiddenContext += `[用户划线选中的精确文本如下，请针对此处内容回答，不要混淆文中其他相同文字的位置]\n`;
+      hiddenContext += `「${selectedText}」\n\n`;
       if (selection.contextBefore) {
-        hiddenContext += `前文：...${selection.contextBefore.slice(-100)}\n`;
+        hiddenContext += `该文本的前文（帮助定位）：...${selection.contextBefore.slice(-300)}\n`;
       }
       if (selection.contextAfter) {
-        hiddenContext += `后文：${selection.contextAfter.slice(0, 100)}...\n`;
+        hiddenContext += `该文本的后文（帮助定位）：${selection.contextAfter.slice(0, 300)}...\n`;
       }
     }
 
