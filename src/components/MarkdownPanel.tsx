@@ -9,6 +9,12 @@ import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
 import { createShare, buildShareUrl, type ShareMode, type AccessMode } from '@/lib/share';
 import { getAnnotationsByDocument } from '@/lib/db';
 
+/** Extract the first markdown heading (# …) from content, null if none. */
+function extractFirstHeading(md: string): string | null {
+  const match = md.match(/^#{1,6}\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
 interface MarkdownPanelProps {
   content: string;
   documentId: string;
@@ -21,7 +27,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     content === NEW_NOTE_CONTENT ? 'edit' : 'preview'
   );
   const [editContent, setEditContent] = useState(content);
-  const { updateDocumentContent } = useDocumentStore();
+  const { updateDocumentContent, updateDocument } = useDocumentStore();
   const { annotations } = useAnnotationStore();
   const [dirty, setDirty] = useState(false);
 
@@ -34,8 +40,16 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
 
   const handleSave = useCallback(async () => {
     await updateDocumentContent(documentId, editContent);
+    // Auto-rename: if the title is still the default "新笔记", use the first heading
+    const currentTitle = useDocumentStore.getState().activeDocument?.title;
+    if (currentTitle === '新笔记') {
+      const heading = extractFirstHeading(editContent);
+      if (heading) {
+        await updateDocument(documentId, { title: heading });
+      }
+    }
     setDirty(false);
-  }, [documentId, editContent, updateDocumentContent]);
+  }, [documentId, editContent, updateDocumentContent, updateDocument]);
 
   const handleExport = () => {
     const docAnnotations = annotations.filter((a) => a.documentId === documentId);
