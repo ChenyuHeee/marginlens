@@ -28,6 +28,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
   const [bodyHeight, setBodyHeight] = useState<number | null>(null);
   const [resizing, setResizing] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const resizeStartYRef = useRef(0);
   const resizeStartHeightRef = useRef(0);
@@ -314,7 +315,10 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
                 </button>
               )}
               <button
-                onClick={() => setAskingInline(!askingInline)}
+                onClick={() => {
+                  setAskingInline(!askingInline);
+                  if (!askingInline) requestAnimationFrame(() => inlineInputRef.current?.focus());
+                }}
                 className="mac-btn"
                 style={{ fontSize: 10, padding: '2px 8px' }}
               >
@@ -326,6 +330,7 @@ export function InlineAnnotation({ annotation, documentId }: InlineAnnotationPro
             {askingInline && (
               <div className="flex items-center gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
                 <input
+                  ref={inlineInputRef}
                   type="text"
                   placeholder="对这条批注追问..."
                   value={inlineQuestion}
