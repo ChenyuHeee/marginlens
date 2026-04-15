@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Eye, EyeOff, GitFork, CheckCircle, AlertCircle, Loader2, Unlink } from 'lucide-react';
+import { X, Plus, Trash2, Eye, EyeOff, GitFork, CheckCircle, AlertCircle, Loader2, Unlink, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { useSettingsStore, useGitHubSyncStore } from '@/stores';
 import type { LLMProvider, PromptTemplate } from '@/types';
 import { validateToken } from '@/lib/github';
@@ -87,14 +87,50 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   );
 }
 
+// Metadata for built-in providers to guide users
+const PROVIDER_META: Record<string, { emoji: string; tagline: string; keyLink: string; keyLinkLabel: string; noKey?: boolean }> = {
+  openai: {
+    emoji: '🤖',
+    tagline: 'GPT-4o · 能力强大',
+    keyLink: 'https://platform.openai.com/api-keys',
+    keyLinkLabel: '获取 OpenAI API Key',
+  },
+  deepseek: {
+    emoji: '🐳',
+    tagline: '国内可用 · 性价比高',
+    keyLink: 'https://platform.deepseek.com/api_keys',
+    keyLinkLabel: '获取 DeepSeek API Key',
+  },
+  qwen: {
+    emoji: '🌐',
+    tagline: '阿里通义千问 · 国内免费额度',
+    keyLink: 'https://bailian.console.aliyun.com/',
+    keyLinkLabel: '获取通义千问 API Key',
+  },
+  ollama: {
+    emoji: '🦙',
+    tagline: '本地运行 · 完全免费 · 隐私安全',
+    keyLink: 'https://ollama.com/download',
+    keyLinkLabel: '下载 Ollama',
+    noKey: true,
+  },
+};
+
 function ProvidersSettings() {
   const { settings, updateSettings, updateProvider } = useSettingsStore();
-  const [showKeyId, setShowKeyId] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const active = settings.providers.find((p) => p.id === settings.activeProviderId)
+    || settings.providers[0];
+
+  const meta = active ? PROVIDER_META[active.id] : null;
+  const isOllama = active?.id === 'ollama';
 
   const handleAddProvider = () => {
     const newProvider: LLMProvider = {
       id: uuid(),
-      name: '新提供商',
+      name: '自定义',
       baseUrl: 'https://api.example.com/v1',
       apiKey: '',
       model: 'gpt-4o-mini',
@@ -103,153 +139,206 @@ function ProvidersSettings() {
     };
     updateSettings({
       providers: [...settings.providers, newProvider],
+      activeProviderId: newProvider.id,
     });
   };
 
   const handleRemoveProvider = (id: string) => {
+    const remaining = settings.providers.filter((p) => p.id !== id);
     updateSettings({
-      providers: settings.providers.filter((p) => p.id !== id),
+      providers: remaining,
       activeProviderId: settings.activeProviderId === id
-        ? settings.providers[0]?.id || ''
+        ? (remaining[0]?.id || '')
         : settings.activeProviderId,
     });
   };
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <label className="text-[13px] font-medium">当前使用</label>
-        <select
-          value={settings.activeProviderId}
-          onChange={(e) => updateSettings({ activeProviderId: e.target.value })}
-          className="px-3 py-1.5 text-[13px] rounded-lg bg-transparent outline-none"
-          style={{ border: '1px solid var(--color-border-strong)', color: 'var(--color-text)' }}
-        >
-          {settings.providers.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+      {/* Step 1: Choose provider */}
+      <div>
+        <p className="text-[11px] font-medium mb-2.5" style={{ color: 'var(--color-text-tertiary)' }}>
+          第一步 · 选择 AI 提供商
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {settings.providers.map((p) => {
+            const m = PROVIDER_META[p.id];
+            const isActive = p.id === settings.activeProviderId;
+            const hasKey = !!p.apiKey && p.apiKey !== 'ollama';
+            return (
+              <button
+                key={p.id}
+                onClick={() => updateSettings({ activeProviderId: p.id })}
+                className="flex items-start gap-2.5 p-3 rounded-xl text-left transition-all"
+                style={{
+                  border: isActive ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  background: isActive ? 'var(--color-primary-subtle)' : 'var(--color-bg)',
+                }}
+              >
+                <span style={{ fontSize: 20, lineHeight: 1 }}>{m?.emoji ?? '⚙️'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>{p.name}</span>
+                    {hasKey && (
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-success, #22c55e)' }} title="已配置 Key" />
+                    )}
+                  </div>
+                  {m && <p className="text-[10px] mt-0.5 leading-tight" style={{ color: 'var(--color-text-tertiary)' }}>{m.tagline}</p>}
+                  {!m && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleRemoveProvider(p.id); }}
+                      className="text-[10px] mt-0.5"
+                      style={{ color: 'var(--color-danger)' }}
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+          <button
+            onClick={handleAddProvider}
+            className="flex items-center justify-center gap-1.5 p-3 rounded-xl transition-all border-dashed"
+            style={{ border: '1px dashed var(--color-border)', color: 'var(--color-text-tertiary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-primary)'; e.currentTarget.style.color = 'var(--color-primary)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+          >
+            <Plus size={13} />
+            <span className="text-[12px]">自定义</span>
+          </button>
+        </div>
       </div>
 
-      {settings.providers.map((provider) => (
+      {/* Step 2: API Key */}
+      {active && (
         <div
-          key={provider.id}
           className="rounded-xl p-4 space-y-3"
-          style={{
-            border: provider.id === settings.activeProviderId
-              ? '1.5px solid var(--color-primary)'
-              : '1px solid var(--color-border)',
-            background: provider.id === settings.activeProviderId
-              ? 'var(--color-primary-subtle)'
-              : 'transparent',
-          }}
+          style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)' }}
         >
-          <div className="flex items-center justify-between">
-            <input
-              value={provider.name}
-              onChange={(e) => updateProvider(provider.id, { name: e.target.value })}
-              className="text-[13px] font-semibold bg-transparent outline-none border-b border-transparent focus:border-current"
-              style={{ color: 'var(--color-text)' }}
-            />
-            {!['openai', 'deepseek', 'qwen', 'ollama'].includes(provider.id) && (
-              <button
-                onClick={() => handleRemoveProvider(provider.id)}
-                className="p-1.5 rounded-lg transition-all"
-                style={{ color: 'var(--color-danger)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,59,48,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <Trash2 size={13} />
-              </button>
-            )}
-          </div>
+          <p className="text-[11px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
+            第二步 · {isOllama ? '确保 Ollama 已在本地运行' : '输入 API Key'}
+          </p>
 
-          <div className="grid grid-cols-2 gap-3">
-            <SettingField label="Base URL">
-              <input
-                value={provider.baseUrl}
-                onChange={(e) => updateProvider(provider.id, { baseUrl: e.target.value })}
-                className="mac-input"
-                style={{ fontSize: 12 }}
-              />
-            </SettingField>
-            <SettingField label="Model">
-              <input
-                value={provider.model}
-                onChange={(e) => updateProvider(provider.id, { model: e.target.value })}
-                className="mac-input"
-                style={{ fontSize: 12 }}
-              />
-            </SettingField>
-          </div>
-
-          <SettingField label="API Key">
-            <div className="relative">
-              <input
-                type={showKeyId === provider.id ? 'text' : 'password'}
-                value={provider.apiKey}
-                onChange={(e) => updateProvider(provider.id, { apiKey: e.target.value })}
-                placeholder="sk-..."
-                autoComplete="off"
-                data-1p-ignore
-                className="mac-input pr-10"
-                style={{ fontSize: 12 }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowKeyId(showKeyId === provider.id ? null : provider.id)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-all"
-                style={{ color: 'var(--color-text-tertiary)' }}
-              >
-                {showKeyId === provider.id ? <EyeOff size={13} /> : <Eye size={13} />}
-              </button>
+          {isOllama ? (
+            <div className="text-[12px] space-y-2" style={{ color: 'var(--color-text-secondary)' }}>
+              <p>Ollama 在本地运行，无需 API Key，完全免费且数据不会上传。</p>
+              <ol className="list-decimal list-inside space-y-1 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <li>下载并安装 Ollama</li>
+                <li>运行 <code className="px-1 rounded" style={{ background: 'var(--color-bg-elevated)', fontFamily: 'monospace' }}>ollama pull llama3</code></li>
+                <li>保持 Ollama 后台运行即可使用</li>
+              </ol>
+              {meta && (
+                <a href={meta.keyLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px]"
+                  style={{ color: 'var(--color-primary)' }}
+                >
+                  <ExternalLink size={11} />
+                  {meta.keyLinkLabel}
+                </a>
+              )}
             </div>
-          </SettingField>
+          ) : (
+            <>
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={active.apiKey}
+                  onChange={(e) => updateProvider(active.id, { apiKey: e.target.value })}
+                  placeholder="粘贴你的 API Key…"
+                  autoComplete="off"
+                  data-1p-ignore
+                  className="mac-input pr-10 text-[13px]"
+                  style={{ height: 38 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                >
+                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              {meta && (
+                <a href={meta.keyLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px]"
+                  style={{ color: 'var(--color-primary)' }}
+                >
+                  <ExternalLink size={11} />
+                  {meta.keyLinkLabel} →
+                </a>
+              )}
+            </>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <SettingField label="Max Tokens">
-              <input
-                type="number"
-                value={provider.maxTokens}
-                onChange={(e) => updateProvider(provider.id, { maxTokens: parseInt(e.target.value) || 4096 })}
-                className="mac-input"
-                style={{ fontSize: 12 }}
-              />
-            </SettingField>
-            <SettingField label="Temperature">
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                value={provider.temperature}
-                onChange={(e) => updateProvider(provider.id, { temperature: parseFloat(e.target.value) || 0.7 })}
-                className="mac-input"
-                style={{ fontSize: 12 }}
-              />
-            </SettingField>
-          </div>
+          {/* Advanced settings collapse */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 text-[11px] mt-1"
+            style={{ color: 'var(--color-text-tertiary)' }}
+          >
+            {showAdvanced ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            高级设置（Base URL · 模型 · Token 数）
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-2 gap-3">
+                <SettingField label="Base URL">
+                  <input
+                    value={active.baseUrl}
+                    onChange={(e) => updateProvider(active.id, { baseUrl: e.target.value })}
+                    className="mac-input"
+                    style={{ fontSize: 12 }}
+                  />
+                </SettingField>
+                <SettingField label="Model">
+                  <input
+                    value={active.model}
+                    onChange={(e) => updateProvider(active.id, { model: e.target.value })}
+                    className="mac-input"
+                    style={{ fontSize: 12 }}
+                  />
+                </SettingField>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <SettingField label="Max Tokens">
+                  <input
+                    type="number"
+                    value={active.maxTokens}
+                    onChange={(e) => updateProvider(active.id, { maxTokens: parseInt(e.target.value) || 4096 })}
+                    className="mac-input"
+                    style={{ fontSize: 12 }}
+                  />
+                </SettingField>
+                <SettingField label="Temperature">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    value={active.temperature}
+                    onChange={(e) => updateProvider(active.id, { temperature: parseFloat(e.target.value) || 0.7 })}
+                    className="mac-input"
+                    style={{ fontSize: 12 }}
+                  />
+                </SettingField>
+              </div>
+              {active.id !== 'openai' && active.id !== 'deepseek' && active.id !== 'qwen' && active.id !== 'ollama' && (
+                <button
+                  onClick={() => handleRemoveProvider(active.id)}
+                  className="text-[11px] flex items-center gap-1"
+                  style={{ color: 'var(--color-danger)' }}
+                >
+                  <Trash2 size={11} />
+                  删除此提供商
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      ))}
-
-      <button
-        onClick={handleAddProvider}
-        className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-[13px] font-medium rounded-xl border-2 border-dashed transition-all"
-        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = 'var(--color-primary)';
-          e.currentTarget.style.color = 'var(--color-primary)';
-          e.currentTarget.style.background = 'var(--color-primary-subtle)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = 'var(--color-border)';
-          e.currentTarget.style.color = 'var(--color-text-secondary)';
-          e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        <Plus size={14} />
-        添加提供商
-      </button>
+      )}
     </div>
   );
 }
