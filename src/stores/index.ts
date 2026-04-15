@@ -21,6 +21,7 @@ interface DocumentStore {
   removeDocument: (id: string) => Promise<void>;
   updateDocumentContent: (id: string, content: string) => Promise<void>;
   updateDocument: (id: string, updates: Partial<Document>) => Promise<void>;
+  setLiveContent: (id: string, content: string) => void;
   touchDocument: (id: string, now?: number) => Promise<void>;
   closeDocument: () => void;
 }
@@ -155,6 +156,15 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     }
     const documents = await db.getAllDocuments();
     set({ documents });
+  },
+
+  // Update activeDocument content in memory only (no IndexedDB write).
+  // Called on every keystroke so ChatPanel always sees the latest text.
+  setLiveContent: (id: string, content: string) => {
+    const { activeDocument, activeDocumentId } = get();
+    if (activeDocumentId === id && activeDocument) {
+      set({ activeDocument: { ...activeDocument, content } });
+    }
   },
 
   touchDocument: async (id: string, now = Date.now()) => {

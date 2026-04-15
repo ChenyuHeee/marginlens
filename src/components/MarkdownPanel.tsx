@@ -35,7 +35,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     content === NEW_NOTE_CONTENT ? 'edit' : 'preview'
   );
   const [editContent, setEditContent] = useState(content);
-  const { updateDocumentContent, updateDocument } = useDocumentStore();
+  const { updateDocumentContent, updateDocument, setLiveContent } = useDocumentStore();
   const { annotations } = useAnnotationStore();
   const [dirty, setDirty] = useState(false);
 
@@ -250,6 +250,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
               onChange={(md) => {
                 setEditContent(md);
                 setDirty(true);
+                setLiveContent(documentId, md);
               }}
             />
           </div>
