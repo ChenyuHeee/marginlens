@@ -1,4 +1,4 @@
-import { MessageSquare, BookOpen, Languages, Settings, Sun, Moon } from 'lucide-react';
+import { MessageSquare, BookOpen, Languages, Settings, Sun, Moon, SunMoon } from 'lucide-react';
 import { useUIStore, useSettingsStore } from '@/stores';
 import { ChatPanel } from './ChatPanel';
 import { AnnotationsPanel } from './AnnotationsPanel';
@@ -13,9 +13,13 @@ export function RightPanel({ onOpenSettings }: RightPanelProps) {
   const { settings, updateSettings } = useSettingsStore();
 
   const toggleTheme = () => {
-    const next = settings.theme === 'dark' ? 'light' : 'dark';
+    const next = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark';
     updateSettings({ theme: next });
-    document.documentElement.classList.toggle('dark', next === 'dark');
+    if (next === 'system') {
+      document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+    } else {
+      document.documentElement.classList.toggle('dark', next === 'dark');
+    }
   };
 
   const tabs = [
@@ -66,7 +70,7 @@ export function RightPanel({ onOpenSettings }: RightPanelProps) {
           <button
             onClick={toggleTheme}
             className="p-1.5 rounded-lg transition-all"
-            title="切换主题"
+            title={`切换主题 (当前: ${settings.theme === 'light' ? '浅色' : settings.theme === 'dark' ? '深色' : '跟随系统'})`}
             style={{ color: 'var(--color-text-tertiary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--color-card-hover)';
@@ -77,7 +81,7 @@ export function RightPanel({ onOpenSettings }: RightPanelProps) {
               e.currentTarget.style.color = 'var(--color-text-tertiary)';
             }}
           >
-            {settings.theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+            {settings.theme === 'dark' ? <Sun size={13} /> : settings.theme === 'system' ? <SunMoon size={13} /> : <Moon size={13} />}
           </button>
           <button
             onClick={onOpenSettings}

@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Eye, Edit3, Download, Save, GitBranch } from 'lucide-react';
+import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2 } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
 import { SyncDialog } from './SyncDialog';
-import { useDocumentStore, useAnnotationStore, useGitHubSyncStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useGitHubSyncStore, useUIStore } from '@/stores';
 import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
 
 interface MarkdownPanelProps {
@@ -52,6 +52,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   // GitHub sync
   const { config: ghConfig } = useGitHubSyncStore();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const { focusMode, toggleFocusMode } = useUIStore();
 
   // Keyboard shortcut: Cmd/Ctrl+S to save
   useEffect(() => {
@@ -143,6 +144,14 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
               推送
             </button>
           )}
+          <button
+            onClick={toggleFocusMode}
+            className="mac-btn flex items-center gap-1"
+            style={{ fontSize: 11, padding: '3px 8px' }}
+            title={focusMode ? '退出专注模式 (Esc)' : '专注模式'}
+          >
+            {focusMode ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+          </button>
         </div>
       </div>
 

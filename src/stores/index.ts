@@ -420,6 +420,10 @@ interface UIStore {
   pdfOutline: PdfOutlineItem[];
   sidebarTab: 'docs' | 'outline';
   scrollToPdfPage: ((page: number) => void) | null;
+  focusMode: boolean;
+  tagFilter: string | null;
+  highlightColor: string;
+  annotationColorFilter: string | null;
   toggleSidebar: () => void;
   setRightPanelTab: (tab: 'chat' | 'annotations' | 'translate') => void;
   setRightPanelWidth: (width: number) => void;
@@ -427,6 +431,10 @@ interface UIStore {
   setPdfOutline: (outline: PdfOutlineItem[]) => void;
   setSidebarTab: (tab: 'docs' | 'outline') => void;
   registerScrollToPdfPage: (fn: ((page: number) => void) | null) => void;
+  toggleFocusMode: () => void;
+  setTagFilter: (tag: string | null) => void;
+  setHighlightColor: (color: string) => void;
+  setAnnotationColorFilter: (color: string | null) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -437,6 +445,10 @@ export const useUIStore = create<UIStore>((set) => ({
   pdfOutline: [],
   sidebarTab: 'docs',
   scrollToPdfPage: null,
+  focusMode: false,
+  tagFilter: null,
+  highlightColor: '#fef08a',
+  annotationColorFilter: null,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
   setRightPanelWidth: (width) => set({ rightPanelWidth: Math.max(300, Math.min(800, width)) }),
@@ -444,6 +456,10 @@ export const useUIStore = create<UIStore>((set) => ({
   setPdfOutline: (outline) => set({ pdfOutline: outline }),
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   registerScrollToPdfPage: (fn) => set({ scrollToPdfPage: fn }),
+  toggleFocusMode: () => set((s) => ({ focusMode: !s.focusMode })),
+  setTagFilter: (tag) => set({ tagFilter: tag }),
+  setHighlightColor: (color) => set({ highlightColor: color }),
+  setAnnotationColorFilter: (color) => set({ annotationColorFilter: color }),
 }));
 
 // ─── GitHub Sync Store ───

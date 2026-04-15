@@ -12,6 +12,8 @@ export interface Document {
   updatedAt: number;
   /** Non-zero timestamp means the document is pinned (higher = pinned later) */
   pinnedAt?: number;
+  /** User-defined tags */
+  tags?: string[];
 }
 
 export interface Annotation {

@@ -6,7 +6,7 @@ import { RightPanel } from '@/components/RightPanel';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
-import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore } from '@/stores';
 import { Upload, FileText, MessageSquare, BookOpen, Sparkles } from 'lucide-react';
 
 export default function App() {
@@ -15,6 +15,7 @@ export default function App() {
   const { loadSettings, settings } = useSettingsStore();
   const { loadConfig: loadGitHubConfig } = useGitHubSyncStore();
   const { init: initAuth } = useAuthStore();
+  const { focusMode, toggleFocusMode } = useUIStore();
 
   useEffect(() => {
     loadSettings();
@@ -23,13 +24,48 @@ export default function App() {
     initAuth();
   }, []);
 
+  // Theme: apply based on settings or system preference
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
+    if (settings.theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const apply = (dark: boolean) => document.documentElement.classList.toggle('dark', dark);
+      apply(mq.matches);
+      mq.addEventListener('change', (e) => apply(e.matches));
+      return () => mq.removeEventListener('change', (e) => apply(e.matches));
+    } else {
+      document.documentElement.classList.toggle('dark', settings.theme === 'dark');
+    }
   }, [settings.theme]);
+
+  // Escape exits focus mode
+  useEffect(() => {
+    if (!focusMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') toggleFocusMode();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [focusMode, toggleFocusMode]);
+
+  // Keyboard shortcuts: Cmd+= / Cmd+- for font size
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        useSettingsStore.getState().updateSettings({ fontSize: Math.min(useSettingsStore.getState().settings.fontSize + 1, 24) });
+      } else if (e.key === '-') {
+        e.preventDefault();
+        useSettingsStore.getState().updateSettings({ fontSize: Math.max(useSettingsStore.getState().settings.fontSize - 1, 12) });
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="h-full flex" style={{ backgroundColor: 'var(--color-bg)' }}>
-      <Sidebar />
+      {!focusMode && <Sidebar />}
 
       <div className="flex-1 flex min-w-0">
         {activeDocument ? (
@@ -41,8 +77,12 @@ export default function App() {
                 <PdfViewer document={activeDocument} />
               )}
             </div>
-            <ResizableHandle side="right" />
-            <RightPanel onOpenSettings={() => setSettingsOpen(true)} />
+            {!focusMode && (
+              <>
+                <ResizableHandle side="right" />
+                <RightPanel onOpenSettings={() => setSettingsOpen(true)} />
+              </>
+            )}
           </>
         ) : (
           <WelcomePage onOpenSettings={() => setSettingsOpen(true)} />

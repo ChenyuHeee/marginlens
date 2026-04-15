@@ -5,7 +5,7 @@ import type { TextContent } from 'pdfjs-dist/types/src/display/api';
 import { useSelectionStore, useAnnotationStore, useDocumentStore, useUIStore } from '@/stores';
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
-import { ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
+import { ZoomIn, ZoomOut, ChevronUp, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { getReadProgress, saveReadProgress } from '@/lib/db';
 
 // Configure worker using Vite's ?worker import for reliable cross-browser loading
@@ -597,6 +597,17 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           </span>
           <button onClick={handleZoomIn} className="p-1 rounded hover:bg-[var(--color-card-hover)]">
             <ZoomIn size={14} style={{ color: 'var(--color-text-secondary)' }} />
+          </button>
+          <div style={{ width: 1, height: 14, background: 'var(--color-border)', margin: '0 2px' }} />
+          <button
+            onClick={() => useUIStore.getState().toggleFocusMode()}
+            className="p-1 rounded hover:bg-[var(--color-card-hover)]"
+            title={useUIStore.getState().focusMode ? '退出专注模式 (Esc)' : '专注模式'}
+          >
+            {useUIStore.getState().focusMode
+              ? <Minimize2 size={14} style={{ color: 'var(--color-text-secondary)' }} />
+              : <Maximize2 size={14} style={{ color: 'var(--color-text-secondary)' }} />
+            }
           </button>
         </div>
       </div>

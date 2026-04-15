@@ -4,6 +4,7 @@ import { useChatStore, useAnnotationStore, useSelectionStore, useSettingsStore, 
 import { buildSystemMessage } from '@/lib/context';
 import type { SelectionInfo } from '@/types';
 import { streamChat } from '@/lib/llm';
+import { HIGHLIGHT_COLORS } from '@/lib/highlightColors';
 
 interface SelectionPopupProps {
   selection: SelectionInfo;
@@ -17,7 +18,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
   const [showTemplates, setShowTemplates] = useState(false);
   const [customQuestion, setCustomQuestion] = useState('');
 
-  const { setRightPanelTab } = useUIStore();
+  const { setRightPanelTab, highlightColor, setHighlightColor } = useUIStore();
   const chatStore = useChatStore();
   const annotationStore = useAnnotationStore();
   const selectionStore = useSelectionStore();
@@ -127,7 +128,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       comment: '',
-      color: '#fef08a',
+      color: highlightColor,
       positionHint: {
         paragraphIndex: selection.paragraphIndex,
         startOffset: selection.startOffset,
@@ -222,6 +223,28 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
           backdropFilter: 'blur(24px)',
         }}
       >
+        {/* Color picker row */}
+        <div className="flex items-center gap-1.5 px-2.5 py-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <span className="text-[10px] font-medium mr-0.5" style={{ color: 'var(--color-text-tertiary)' }}>颜色</span>
+          {HIGHLIGHT_COLORS.map((hc) => (
+            <button
+              key={hc.id}
+              onClick={() => setHighlightColor(hc.color)}
+              title={hc.label}
+              className="w-5 h-5 rounded-full flex-shrink-0 transition-all"
+              style={{
+                background: hc.color,
+                outline: highlightColor === hc.color ? '2px solid var(--color-primary)' : '2px solid transparent',
+                outlineOffset: 1,
+                transform: highlightColor === hc.color ? 'scale(1.2)' : 'scale(1)',
+              }}
+            />
+          ))}
+          <span className="text-[10px] ml-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            {HIGHLIGHT_COLORS.find(c => c.color === highlightColor)?.label}
+          </span>
+        </div>
+
         {/* Action bar */}
         <div className="flex items-center gap-1 p-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
           <button

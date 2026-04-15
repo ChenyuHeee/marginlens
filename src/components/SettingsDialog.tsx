@@ -377,21 +377,25 @@ function DisplaySettings() {
       <div className="space-y-2">
         <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>主题</label>
         <div className="flex gap-2">
-          {(['light', 'dark'] as const).map((theme) => (
+          {(['light', 'dark', 'system'] as const).map((theme) => (
             <button
               key={theme}
               onClick={() => {
                 updateSettings({ theme });
-                document.documentElement.classList.toggle('dark', theme === 'dark');
+                if (theme === 'system') {
+                  document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+                } else {
+                  document.documentElement.classList.toggle('dark', theme === 'dark');
+                }
               }}
-              className="flex-1 px-4 py-2.5 text-[13px] font-medium rounded-xl transition-all"
+              className="flex-1 px-3 py-2.5 text-[12px] font-medium rounded-xl transition-all"
               style={{
                 border: settings.theme === theme ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
                 background: settings.theme === theme ? 'var(--color-primary-light)' : 'transparent',
                 color: settings.theme === theme ? 'var(--color-primary)' : 'var(--color-text-secondary)',
               }}
             >
-              {theme === 'light' ? '☀️ 浅色' : '🌙 深色'}
+              {theme === 'light' ? '☀️ 浅色' : theme === 'dark' ? '🌙 深色' : '🌓 跟随系统'}
             </button>
           ))}
         </div>

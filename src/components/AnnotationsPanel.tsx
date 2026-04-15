@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Trash2, Edit3, Check, X, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
-import { useAnnotationStore, useDocumentStore } from '@/stores';
+import { useAnnotationStore, useDocumentStore, useUIStore } from '@/stores';
+import { HIGHLIGHT_COLORS } from '@/lib/highlightColors';
 
 export function AnnotationsPanel() {
   const { annotations, activeAnnotationId, setActiveAnnotation, updateAnnotation, removeAnnotation } = useAnnotationStore();
   const { activeDocument } = useDocumentStore();
+  const { annotationColorFilter, setAnnotationColorFilter } = useUIStore();
 
   if (!activeDocument) {
     return (
@@ -17,6 +19,12 @@ export function AnnotationsPanel() {
   }
 
   const docAnnotations = annotations.filter((a) => a.documentId === activeDocument.id);
+  const filteredAnnotations = annotationColorFilter
+    ? docAnnotations.filter((a) => a.color === annotationColorFilter)
+    : docAnnotations;
+
+  // Get colors that actually appear in annotations
+  const usedColors = Array.from(new Set(docAnnotations.map((a) => a.color)));
 
   if (docAnnotations.length === 0) {
     return (
@@ -35,13 +43,43 @@ export function AnnotationsPanel() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-3 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div className="px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
-          {docAnnotations.length} 条批注
+          {filteredAnnotations.length}/{docAnnotations.length}
         </span>
+        <div className="flex items-center gap-1 ml-1">
+          <button
+            onClick={() => setAnnotationColorFilter(null)}
+            className="w-[18px] h-[18px] rounded-full text-[8px] flex items-center justify-center transition-all"
+            title="全部"
+            style={{
+              background: 'var(--color-bg-secondary)',
+              outline: !annotationColorFilter ? '2px solid var(--color-primary)' : '2px solid transparent',
+              outlineOffset: 1,
+              color: 'var(--color-text-secondary)',
+              fontWeight: 600,
+            }}
+          >
+            全
+          </button>
+          {HIGHLIGHT_COLORS.filter((hc) => usedColors.includes(hc.color)).map((hc) => (
+            <button
+              key={hc.id}
+              onClick={() => setAnnotationColorFilter(annotationColorFilter === hc.color ? null : hc.color)}
+              title={hc.label}
+              className="w-[18px] h-[18px] rounded-full transition-all"
+              style={{
+                background: hc.color,
+                outline: annotationColorFilter === hc.color ? '2px solid var(--color-primary)' : '2px solid transparent',
+                outlineOffset: 1,
+                transform: annotationColorFilter === hc.color ? 'scale(1.15)' : 'scale(1)',
+              }}
+            />
+          ))}
+        </div>
       </div>
       <div className="py-1">
-        {docAnnotations.map((ann) => (
+        {filteredAnnotations.map((ann) => (
           <AnnotationCard
             key={ann.id}
             annotation={ann}

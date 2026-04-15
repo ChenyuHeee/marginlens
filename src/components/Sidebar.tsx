@@ -22,6 +22,7 @@ import {
   ArrowUpDown,
   BarChart2,
   List,
+  Tag,
 } from 'lucide-react';
 import { useDocumentStore, useAnnotationStore, useChatStore, useUIStore, useAuthStore } from '@/stores';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -44,7 +45,7 @@ export function Sidebar() {
   const { documents, activeDocumentId, activeDocument, openDocument, addDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
-  const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline } = useUIStore();
+  const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline, tagFilter, setTagFilter } = useUIStore();
   const { user, syncing: cloudSyncing, lastSyncedAt, syncError, signOut, syncNow } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -59,6 +60,9 @@ export function Sidebar() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [taggingId, setTaggingId] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState('');
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -95,9 +99,34 @@ export function Sidebar() {
     setRenamingId(null);
   };
 
+  const addTag = async (docId: string) => {
+    const tag = tagInput.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!tag) { setTaggingId(null); return; }
+    const doc = documents.find(d => d.id === docId);
+    const existing = doc?.tags ?? [];
+    if (!existing.includes(tag)) {
+      await updateDocument(docId, { tags: [...existing, tag] });
+    }
+    setTaggingId(null);
+    setTagInput('');
+  };
+
+  const removeTag = async (docId: string, tag: string) => {
+    const doc = documents.find(d => d.id === docId);
+    const existing = doc?.tags ?? [];
+    await updateDocument(docId, { tags: existing.filter(t => t !== tag) });
+  };
+
+  // Collect all unique tags across all documents
+  const allTags = Array.from(new Set(documents.flatMap(d => d.tags ?? []))).sort();
+
   // Sort + filter
   const sortedDocs = [...documents]
-    .filter((d) => d.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter((d) => {
+      const matchSearch = d.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchTag = !tagFilter || (d.tags ?? []).includes(tagFilter);
+      return matchSearch && matchTag;
+    })
     .sort((a, b) => {
       const pinA = a.pinnedAt || 0;
       const pinB = b.pinnedAt || 0;
@@ -282,6 +311,36 @@ export function Sidebar() {
           />
         </div>
       </div>
+
+      {/* Tag filter bar */}
+      {allTags.length > 0 && (
+        <div className="px-3 pb-1 flex items-center gap-1.5 flex-wrap">
+          <Tag size={10} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
+          <button
+            onClick={() => setTagFilter(null)}
+            className="px-1.5 py-0.5 rounded text-[10px] font-medium transition-all"
+            style={{
+              background: !tagFilter ? 'var(--color-primary-light)' : 'transparent',
+              color: !tagFilter ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
+            }}
+          >
+            全部
+          </button>
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+              className="px-1.5 py-0.5 rounded text-[10px] font-medium transition-all"
+              style={{
+                background: tagFilter === tag ? 'var(--color-primary-light)' : 'var(--color-bg-tertiary)',
+                color: tagFilter === tag ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              }}
+            >
+              #{tag}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="px-3 py-2 flex gap-2">
@@ -519,9 +578,48 @@ export function Sidebar() {
                           {isPinned && <span className="mr-1" style={{ color: 'var(--color-primary)', fontSize: 9 }}>●</span>}
                           {doc.title}
                         </p>
-                        <p className="text-[10px] mt-px" style={{ color: 'var(--color-text-tertiary)' }}>
-                          {doc.type === 'pdf' ? 'PDF' : 'MD'} · {formatFileSize(doc.fileSize)}
-                        </p>
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                          <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {doc.type === 'pdf' ? 'PDF' : 'MD'} · {formatFileSize(doc.fileSize)}
+                          </span>
+                          {(doc.tags ?? []).map((tag) => (
+                            <span
+                              key={tag}
+                              className="group/tag flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-medium cursor-pointer"
+                              style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}
+                              onClick={(e) => { e.stopPropagation(); setTagFilter(tag); }}
+                              title={`筛选: #${tag}`}
+                            >
+                              #{tag}
+                              <span
+                                className="opacity-0 group-hover/tag:opacity-100 transition-opacity"
+                                onClick={(e) => { e.stopPropagation(); removeTag(doc.id, tag); }}
+                                title="移除标签"
+                              >
+                                ×
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                        {/* Inline tag input */}
+                        {taggingId === doc.id && (
+                          <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              ref={tagInputRef}
+                              value={tagInput}
+                              onChange={(e) => setTagInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') addTag(doc.id);
+                                if (e.key === 'Escape') { setTaggingId(null); setTagInput(''); }
+                              }}
+                              onBlur={() => addTag(doc.id)}
+                              autoFocus
+                              placeholder="输入标签..."
+                              className="mac-input flex-1 min-w-0"
+                              style={{ fontSize: 10, padding: '2px 5px', borderRadius: 'var(--radius-sm)' }}
+                            />
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -529,6 +627,16 @@ export function Sidebar() {
                   {/* Action buttons (visible on hover) */}
                   {!isRenaming && (
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setTaggingId(doc.id); setTagInput(''); setTimeout(() => tagInputRef.current?.focus(), 0); }}
+                        className="p-1 rounded-md"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                        title="添加标签"
+                      >
+                        <Tag size={11} />
+                      </button>
                       <button
                         onClick={(e) => startRename(e, doc.id, doc.title)}
                         className="p-1 rounded-md"
