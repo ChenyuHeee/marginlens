@@ -39,12 +39,15 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   const { annotations } = useAnnotationStore();
   const [dirty, setDirty] = useState(false);
 
-  // Sync editContent when content changes externally (e.g. switching documents)
+  // Reset state only when the document actually switches (not on every content prop update)
+  const prevDocIdRef = useRef(documentId);
   useEffect(() => {
+    if (prevDocIdRef.current === documentId) return;
+    prevDocIdRef.current = documentId;
     setEditContent(content);
     setDirty(false);
     setMode(content === NEW_NOTE_CONTENT ? 'edit' : 'preview');
-  }, [content, documentId]);
+  }, [documentId, content]);
 
   const handleSave = useCallback(async () => {
     await updateDocumentContent(documentId, editContent);
@@ -58,6 +61,26 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     }
     setDirty(false);
   }, [documentId, editContent, updateDocumentContent, updateDocument]);
+
+  // Debounced autosave: persist to IndexedDB 1.5s after the user stops typing
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleAutosave = useCallback((md: string) => {
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(async () => {
+      await updateDocumentContent(documentId, md);
+      const currentTitle = useDocumentStore.getState().activeDocument?.title;
+      if (currentTitle === '新笔记') {
+        const heading = extractFirstHeading(md);
+        if (heading) await updateDocument(documentId, { title: heading });
+      }
+      setDirty(false);
+    }, 1500);
+  }, [documentId, updateDocumentContent, updateDocument]);
+
+  // Clear autosave timer on unmount or document switch
+  useEffect(() => {
+    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+  }, [documentId]);
 
   const handleExport = () => {
     const docAnnotations = annotations.filter((a) => a.documentId === documentId);
@@ -251,6 +274,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
                 setEditContent(md);
                 setDirty(true);
                 setLiveContent(documentId, md);
+                scheduleAutosave(md);
               }}
             />
           </div>
