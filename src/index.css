@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "highlight.js/styles/github.css";
 
 /* ── PDF manual text layer ── */
 .pdf-text-layer {
@@ -87,6 +88,29 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.22);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.30);
   --shadow-xl: 0 16px 48px rgba(0,0,0,0.35);
+
+  /* ── Syntax highlighting (dark mode) ── */
+  .hljs { color: #c9d1d9; }
+  .hljs-doctag, .hljs-keyword, .hljs-meta .hljs-keyword,
+  .hljs-template-tag, .hljs-template-variable, .hljs-type,
+  .hljs-variable.language_ { color: #ff7b72; }
+  .hljs-title, .hljs-title.class_, .hljs-title.class_.inherited__,
+  .hljs-title.function_ { color: #d2a8ff; }
+  .hljs-attr, .hljs-attribute, .hljs-literal, .hljs-meta,
+  .hljs-number, .hljs-operator, .hljs-variable, .hljs-selector-attr,
+  .hljs-selector-class, .hljs-selector-id { color: #79c0ff; }
+  .hljs-regexp, .hljs-string, .hljs-meta .hljs-string { color: #a5d6ff; }
+  .hljs-built_in, .hljs-symbol { color: #ffa657; }
+  .hljs-comment, .hljs-code, .hljs-formula { color: #8b949e; }
+  .hljs-name, .hljs-quote, .hljs-selector-tag,
+  .hljs-selector-pseudo { color: #7ee787; }
+  .hljs-subst { color: #c9d1d9; }
+  .hljs-section { color: #1f6feb; font-weight: bold; }
+  .hljs-bullet { color: #f2cc60; }
+  .hljs-emphasis { color: #c9d1d9; font-style: italic; }
+  .hljs-strong { color: #c9d1d9; font-weight: bold; }
+  .hljs-addition { color: #aff5b4; background-color: #033a16; }
+  .hljs-deletion { color: #ffdcd7; background-color: #67060c; }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -147,6 +171,8 @@ body {
   margin: 0.8em 0;
 }
 .markdown-body pre code { background: none; padding: 0; font-size: 0.85em; }
+/* hljs resets: let our pre container control background */
+.markdown-body .hljs { background: transparent; padding: 0; }
 .markdown-body table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--color-border-strong); padding: 0.5em 0.85em; text-align: left; }
 .markdown-body th { background: var(--color-bg-secondary); font-weight: 600; font-size: 0.9em; }
