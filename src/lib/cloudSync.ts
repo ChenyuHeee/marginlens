@@ -24,6 +24,8 @@ export async function pushDocuments(userId: string): Promise<number> {
     type: d.type,
     content: d.content,
     file_size: d.fileSize,
+    tags: d.tags ?? [],
+    pinned_at: d.pinnedAt ?? 0,
     created_at: new Date(d.createdAt).toISOString(),
     updated_at: new Date(d.updatedAt).toISOString(),
   }));
@@ -152,6 +154,8 @@ export async function pullDocuments(userId: string): Promise<number> {
       type: row.type,
       content: row.content,
       fileSize: row.file_size,
+      tags: row.tags ?? [],
+      pinnedAt: row.pinned_at ?? 0,
       createdAt: new Date(row.created_at).getTime(),
       updatedAt: cloudUpdated,
     };

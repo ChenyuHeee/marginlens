@@ -119,12 +119,12 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     URL.revokeObjectURL(url);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     setExportMenuOpen(false);
-    const doc = useDocumentStore.getState().activeDocument;
-    const title = doc?.title || 'document';
+    const storeDoc = useDocumentStore.getState().activeDocument;
+    const title = storeDoc?.title || 'document';
 
-    // Render the full markdown to static HTML — avoids DOM scroll/clip issues
+    // Render full markdown to static HTML
     const mdElement = createElement(ReactMarkdown, {
       remarkPlugins: [remarkGfm, remarkMath],
       rehypePlugins: [rehypeKatex, rehypeHighlight, rehypeRaw],
@@ -132,7 +132,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     });
     const renderedHtml = renderToStaticMarkup(mdElement);
 
-    // Collect CSS from the current page
+    // Collect page CSS (excluding rules that would clip/constrain layout)
     const cssTexts: string[] = [];
     for (const sheet of Array.from(document.styleSheets)) {
       try {
@@ -142,26 +142,52 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
       }
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>${title}</title>
-  <style>${cssTexts.join('\n')}</style>
-  <style>
-    body { background: #fff !important; margin: 0; color: #1a1a1d; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
-    .print-wrap { max-width: 780px; margin: 0 auto; padding: 48px 40px; }
-    @media print { @page { margin: 20mm 18mm; } .print-wrap { max-width: 100%; padding: 0; } }
-  </style>
-</head>
-<body>
-  <div class="print-wrap markdown-body">${renderedHtml}</div>
-  <script>window.onload = function() { setTimeout(function() { window.print(); }, 400); };<\/script>
-</body>
-</html>`);
-    printWindow.document.close();
+    // Mount a hidden container for rendering
+    const container = document.createElement('div');
+    container.style.cssText = [
+      'position:fixed', 'left:-9999px', 'top:0',
+      'width:794px',   // A4 px at 96dpi ≈ 794px
+      'background:#fff', 'color:#1a1a1d',
+      'font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif',
+      '-webkit-font-smoothing:antialiased',
+      'padding:48px 56px 64px',
+      'box-sizing:border-box',
+    ].join(';');
+    container.className = 'markdown-body';
+    container.innerHTML = renderedHtml;
+    document.body.appendChild(container);
+
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
+
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        windowWidth: 794,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = (canvas.height / canvas.width) * imgW;
+
+      let y = 0;
+      while (y < imgH) {
+        if (y > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, -y, imgW, imgH);
+        y += pageH;
+      }
+
+      pdf.save(`${title}.pdf`);
+    } finally {
+      document.body.removeChild(container);
+    }
   };
 
   // GitHub sync
