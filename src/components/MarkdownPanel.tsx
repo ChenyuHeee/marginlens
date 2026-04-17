@@ -1,5 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, createElement } from 'react';
 import { createPortal } from 'react-dom';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeRaw from 'rehype-raw';
 import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check, X, ChevronDown, FileText, FileType } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
@@ -112,11 +119,20 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     URL.revokeObjectURL(url);
   };
 
-  const doPrintPDF = (mdBody: HTMLElement, title: string) => {
-    const clone = mdBody.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('.annotation-portal, .selection-popup').forEach((el) => el.remove());
+  const handleExportPDF = () => {
+    setExportMenuOpen(false);
+    const doc = useDocumentStore.getState().activeDocument;
+    const title = doc?.title || 'document';
 
-    // Collect all page CSS rules
+    // Render the full markdown to static HTML — avoids DOM scroll/clip issues
+    const mdElement = createElement(ReactMarkdown, {
+      remarkPlugins: [remarkGfm, remarkMath],
+      rehypePlugins: [rehypeKatex, rehypeHighlight, rehypeRaw],
+      children: editContent,
+    });
+    const renderedHtml = renderToStaticMarkup(mdElement);
+
+    // Collect CSS from the current page
     const cssTexts: string[] = [];
     for (const sheet of Array.from(document.styleSheets)) {
       try {
@@ -141,32 +157,11 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   </style>
 </head>
 <body>
-  <div class="print-wrap markdown-body">${clone.innerHTML}</div>
+  <div class="print-wrap markdown-body">${renderedHtml}</div>
   <script>window.onload = function() { setTimeout(function() { window.print(); }, 400); };<\/script>
 </body>
 </html>`);
     printWindow.document.close();
-  };
-
-  const handleExportPDF = () => {
-    setExportMenuOpen(false);
-    const doc = useDocumentStore.getState().activeDocument;
-    const title = doc?.title || 'document';
-
-    const tryPrint = () => {
-      const container = document.getElementById('markdown-scroll-container');
-      const mdBody = container?.querySelector<HTMLElement>('.markdown-body');
-      if (mdBody) {
-        doPrintPDF(mdBody, title);
-      }
-    };
-
-    if (mode !== 'preview') {
-      setMode('preview');
-      setTimeout(tryPrint, 150);
-    } else {
-      tryPrint();
-    }
   };
 
   // GitHub sync
