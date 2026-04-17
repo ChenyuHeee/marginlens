@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check, X } from 'lucide-react';
+import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check, X, ChevronDown, FileText, FileType } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
 import { SyncDialog } from './SyncDialog';
@@ -82,10 +82,25 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
   }, [documentId]);
 
-  const handleExport = () => {
+  // Export dropdown
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [exportMenuOpen]);
+
+  const handleExportMarkdown = () => {
+    setExportMenuOpen(false);
     const docAnnotations = annotations.filter((a) => a.documentId === documentId);
     const contentWithAnnotations = serializeAnnotationsToMarkdown(editContent, docAnnotations);
-
     const doc = useDocumentStore.getState().activeDocument;
     const filename = (doc?.title || 'document') + '.md';
     const blob = new Blob([contentWithAnnotations], { type: 'text/markdown;charset=utf-8' });
@@ -95,6 +110,63 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const doPrintPDF = (mdBody: HTMLElement, title: string) => {
+    const clone = mdBody.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.annotation-portal, .selection-popup').forEach((el) => el.remove());
+
+    // Collect all page CSS rules
+    const cssTexts: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        cssTexts.push(Array.from(sheet.cssRules).map((r) => r.cssText).join('\n'));
+      } catch {
+        if (sheet.href) cssTexts.push(`@import url("${sheet.href}");`);
+      }
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <style>${cssTexts.join('\n')}</style>
+  <style>
+    body { background: #fff !important; margin: 0; color: #1a1a1d; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+    .print-wrap { max-width: 780px; margin: 0 auto; padding: 48px 40px; }
+    @media print { @page { margin: 20mm 18mm; } .print-wrap { max-width: 100%; padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="print-wrap markdown-body">${clone.innerHTML}</div>
+  <script>window.onload = function() { setTimeout(function() { window.print(); }, 400); };<\/script>
+</body>
+</html>`);
+    printWindow.document.close();
+  };
+
+  const handleExportPDF = () => {
+    setExportMenuOpen(false);
+    const doc = useDocumentStore.getState().activeDocument;
+    const title = doc?.title || 'document';
+
+    const tryPrint = () => {
+      const container = document.getElementById('markdown-scroll-container');
+      const mdBody = container?.querySelector<HTMLElement>('.markdown-body');
+      if (mdBody) {
+        doPrintPDF(mdBody, title);
+      }
+    };
+
+    if (mode !== 'preview') {
+      setMode('preview');
+      setTimeout(tryPrint, 150);
+    } else {
+      tryPrint();
+    }
   };
 
   // GitHub sync
@@ -221,15 +293,46 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
               保存
             </button>
           )}
-          <button
-            onClick={handleExport}
-            className="mac-btn flex items-center gap-1"
-            style={{ fontSize: 11, padding: '3px 10px' }}
-            title="导出 Markdown（含批注）"
-          >
-            <Download size={11} />
-            导出
-          </button>
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setExportMenuOpen((v) => !v)}
+              className="mac-btn flex items-center gap-1"
+              style={{ fontSize: 11, padding: '3px 10px' }}
+              title="导出"
+            >
+              <Download size={11} />
+              导出
+              <ChevronDown size={9} />
+            </button>
+            {exportMenuOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-50 rounded-lg overflow-hidden"
+                style={{
+                  minWidth: 140,
+                  background: 'var(--color-bg-elevated)',
+                  border: '1px solid var(--color-border-strong)',
+                  boxShadow: 'var(--shadow-md)',
+                }}
+              >
+                <button
+                  onClick={handleExportMarkdown}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--color-card-hover)] transition-colors"
+                  style={{ color: 'var(--color-text)' }}
+                >
+                  <FileText size={12} />
+                  导出 Markdown
+                </button>
+                <button
+                  onClick={handleExportPDF}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--color-card-hover)] transition-colors"
+                  style={{ color: 'var(--color-text)' }}
+                >
+                  <FileType size={12} />
+                  导出 PDF
+                </button>
+              </div>
+            )}
+          </div>
           {ghConfig && (
             <button
               onClick={() => setSyncDialogOpen(true)}
