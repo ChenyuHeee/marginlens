@@ -272,108 +272,157 @@ export async function generateTeachingSite(
   }
   onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）`, streamBuffer: plannerRaw });
 
-  // ─── 2) Generator (with retry) ────────────────────────────────
-  // Truncate source note for Generator: Planner outline already captures structure,
-  // so we only need enough note context for per-module content writing.
-  const GEN_NOTE_MAX = 8_000;
-  const generatorSource = source.note.length > GEN_NOTE_MAX
-    ? { ...source, note: source.note.slice(0, GEN_NOTE_MAX) + '\n\n…（笔记原文已截断，请以 Planner 大纲为准生成内容）' }
+  // ─── 2) Generator (batched for large outlines) ────────────────────────────
+  // Strategy: split the Planner outline into batches of BATCH_SIZE modules.
+  // Each batch is a separate Generator call → output always fits within the
+  // 8192-token budget even for very large notes. The source note is truncated
+  // per call to keep input tokens manageable; the Planner outline has already
+  // captured the full structure.
+  const BATCH_SIZE = 6;
+  const NOTE_MAX_CHARS = 12_000;
+  const EST_CHARS_PER_MODULE = 600; // expected streaming output chars per module
+
+  const genSource = source.note.length > NOTE_MAX_CHARS
+    ? { ...source, note: source.note.slice(0, NOTE_MAX_CHARS) + '\n\n…（笔记原文超长已截断，请按 Planner 大纲生成内容）' }
     : source;
-  const genUserMsg = `Source material (JSON):\n${JSON.stringify(generatorSource, null, 2)}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}`;
-  type GenMsg = { role: 'system' | 'user' | 'assistant'; content: string };
+  const genSourceStr = JSON.stringify(genSource, null, 2);
+  const planStr = JSON.stringify(plan, null, 2);
 
-  let generatedModules: TeachingModule[] | null = null;
-  let lastGenError = '';
+  // Split outline into batches
+  const outlineBatches: (typeof plan.outline)[] = [];
+  for (let i = 0; i < plan.outline.length; i += BATCH_SIZE) {
+    outlineBatches.push(plan.outline.slice(i, i + BATCH_SIZE));
+  }
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    // Retry uses a fresh conversation (not appending previous output) to avoid
-    // context bloat. Error hint is prepended to the user turn instead.
-    const userContent = attempt === 1
-      ? genUserMsg
-      : `${genUserMsg}\n\nNOTE: A previous attempt was rejected because: ${lastGenError}. ` +
-        `Ensure every module has all required fields as specified in the schema.`;
+  const allGeneratedModules: TeachingModule[] = [];
+  const GEN_FRAC_START = 0.36;
+  const GEN_FRAC_END = 0.68;
+  const totalGenBatches = outlineBatches.length;
 
-    const messages: GenMsg[] = [
-      { role: 'system', content: GENERATOR_SYSTEM },
-      { role: 'user', content: userContent },
-    ];
+  for (let batchIdx = 0; batchIdx < totalGenBatches; batchIdx++) {
+    const batch = outlineBatches[batchIdx];
+    const batchIds = batch.map((m) => m.id).join(', ');
+    const batchFracStart = GEN_FRAC_START + (batchIdx / totalGenBatches) * (GEN_FRAC_END - GEN_FRAC_START);
+    const batchFracEnd = GEN_FRAC_START + ((batchIdx + 1) / totalGenBatches) * (GEN_FRAC_END - GEN_FRAC_START);
+    const batchEst = EST_CHARS_PER_MODULE * batch.length;
 
-    // Generator output estimated ~8000 chars; each attempt spans 0.12 of the bar
-    const GEN_EST = 8000;
-    const genBase = 0.36 + (attempt - 1) * 0.14;
-    const genMsg = attempt === 1 ? '生成模块内容…' : `重试生成（第 ${attempt} 次）…`;
-    onProgress?.({ stage: 'generator', fraction: genBase, message: genMsg });
+    const batchHint = totalGenBatches > 1
+      ? `\n\nIMPORTANT: This is batch ${batchIdx + 1} of ${totalGenBatches}. Generate ONLY the following modules (by id): ${batchIds}. The full outline is provided for context only.`
+      : '';
+    const baseUserMsg = `Source material (JSON):\n${genSourceStr}\n\nPlanner outline:\n${planStr}${batchHint}`;
 
-    const raw = await chatComplete(provider, messages, signal, (partial) => {
-      const frac = genBase + Math.min(partial.length / GEN_EST, 1) * 0.22;
-      onProgress?.({ stage: 'generator', fraction: frac, message: genMsg, streamBuffer: partial });
-    }, 8192);
+    let batchModules: TeachingModule[] | null = null;
+    let lastBatchError = '';
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const userContent = attempt === 1
+        ? baseUserMsg
+        : `${baseUserMsg}\n\nNOTE: Previous attempt failed because: ${lastBatchError}. Ensure all required fields are present.`;
+
+      const genMsg = totalGenBatches > 1
+        ? `生成模块 ${batchIds}（批次 ${batchIdx + 1}/${totalGenBatches}）…`
+        : attempt === 1 ? '生成模块内容…' : '重试生成…';
+      onProgress?.({ stage: 'generator', fraction: batchFracStart, message: genMsg });
+
+      const raw = await chatComplete(
+        provider,
+        [
+          { role: 'system', content: GENERATOR_SYSTEM },
+          { role: 'user', content: userContent },
+        ],
+        signal,
+        (partial) => {
+          const frac = batchFracStart + Math.min(partial.length / batchEst, 1) * (batchFracEnd - batchFracStart);
+          onProgress?.({ stage: 'generator', fraction: frac, message: genMsg, streamBuffer: partial });
+        },
+        8192,
+      );
+
+      try {
+        const parsed = extractJson<{ modules: unknown[] }>(raw);
+        const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
+        const valid = sanitizeModules(rawArr);
+
+        if (valid.length < 1) {
+          lastBatchError = `No valid modules in batch ${batchIdx + 1}. ${describeModuleIssues(rawArr)}`;
+          console.warn('[Teaching] Generator batch', batchIdx + 1, 'validation failed:', lastBatchError, '\nFirst 500 chars:', raw.slice(0, 500));
+          continue;
+        }
+        batchModules = valid;
+        break;
+      } catch (e) {
+        lastBatchError = (e as Error).message;
+        console.warn('[Teaching] Generator batch', batchIdx + 1, 'JSON error:', lastBatchError, '\nFirst 500 chars:', raw.slice(0, 500));
+      }
+    }
+
+    if (!batchModules) {
+      throw new Error(`内容生成失败（批次 ${batchIdx + 1} 已重试）：${lastBatchError}`);
+    }
+    allGeneratedModules.push(...batchModules);
+  }
+
+  const generatedModules = allGeneratedModules;
+  onProgress?.({ stage: 'generator', fraction: GEN_FRAC_END, message: `已生成 ${generatedModules.length} 个模块` });
+
+  // ─── 3) Reviewer (batched for large module sets) ──────────────────────────
+  const REV_FRAC_START = 0.72;
+  const revBatches: TeachingModule[][] = [];
+  for (let i = 0; i < generatedModules.length; i += BATCH_SIZE) {
+    revBatches.push(generatedModules.slice(i, i + BATCH_SIZE));
+  }
+  const totalRevBatches = revBatches.length;
+  let finalModules: TeachingModule[] = [];
+  let reviewerNotes: string[] | undefined;
+
+  for (let batchIdx = 0; batchIdx < totalRevBatches; batchIdx++) {
+    const batch = revBatches[batchIdx];
+    const batchFracStart = REV_FRAC_START + (batchIdx / totalRevBatches) * (1 - REV_FRAC_START);
+    const batchFracEnd = REV_FRAC_START + ((batchIdx + 1) / totalRevBatches) * (1 - REV_FRAC_START);
+    const batchEst = EST_CHARS_PER_MODULE * batch.length;
+    const revMsg = totalRevBatches > 1
+      ? `审校批次 ${batchIdx + 1}/${totalRevBatches}…`
+      : '审校事实与一致性…';
+    onProgress?.({ stage: 'reviewer', fraction: batchFracStart, message: revMsg });
 
     try {
-      const parsed = extractJson<{ modules: unknown[] }>(raw);
-      const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
-      const valid = sanitizeModules(rawArr);
-
-      if (valid.length < 2) {
-        lastGenError = `Only ${valid.length} module(s) passed validation out of ${rawArr.length}. ` +
-          describeModuleIssues(rawArr);
-        console.warn('[Teaching] Generator validation failed (attempt', attempt, '):', lastGenError, '\nFirst 500 chars:', raw.slice(0, 500));
-        continue;
-      }
-
-      generatedModules = valid;
-      break;
-    } catch (e) {
-      lastGenError = (e as Error).message;
-      console.warn('[Teaching] Generator JSON parse error (attempt', attempt, '):', lastGenError, '\nFirst 500 chars:', raw.slice(0, 500));
-    }
-  }
-
-  if (!generatedModules) {
-    throw new Error(`内容生成失败（已重试）：${lastGenError}`);
-  }
-  onProgress?.({ stage: 'generator', fraction: 0.70, message: `已生成 ${generatedModules.length} 个模块` });
-
-  // ─── 3) Reviewer ──────────────────────────────────────────────
-  // Reviewer output estimated ~8000 chars; fraction spans 0.72→0.97
-  const REV_EST = 8000;
-  onProgress?.({ stage: 'reviewer', fraction: 0.72, message: '审校事实与一致性…' });
-  let finalModules = generatedModules;
-  let reviewerNotes: string[] | undefined;
-  try {
-    const reviewerRaw = await chatComplete(
-      provider,
-      [
-        { role: 'system', content: REVIEWER_SYSTEM },
-        {
-          role: 'user',
-          content: `Source material (JSON):\n${JSON.stringify(generatorSource, null, 2)}\n\nGenerated modules:\n${JSON.stringify({ modules: generatedModules }, null, 2)}`,
+      const reviewerRaw = await chatComplete(
+        provider,
+        [
+          { role: 'system', content: REVIEWER_SYSTEM },
+          {
+            role: 'user',
+            content: `Source material (JSON):\n${genSourceStr}\n\nGenerated modules:\n${JSON.stringify({ modules: batch }, null, 2)}`,
+          },
+        ],
+        signal,
+        (partial) => {
+          const frac = batchFracStart + Math.min(partial.length / batchEst, 1) * (batchFracEnd - batchFracStart);
+          onProgress?.({ stage: 'reviewer', fraction: frac, message: revMsg, streamBuffer: partial });
         },
-      ],
-      signal,
-      (partial) => {
-        const frac = 0.72 + Math.min(partial.length / REV_EST, 1) * 0.25;
-        onProgress?.({ stage: 'reviewer', fraction: frac, message: '审校事实与一致性…', streamBuffer: partial });
-      },
-      8192,
-    );
-    const reviewed = extractJson<{ modules?: unknown[]; notes?: string[] }>(reviewerRaw);
-    if (Array.isArray(reviewed?.modules) && reviewed.modules.length > 0) {
-      const sanitized = sanitizeModules(reviewed.modules);
-      // Only accept the reviewer's output if it preserved most of the modules;
-      // if it somehow discarded too many, fall back to generator output.
-      if (sanitized.length >= Math.ceil(generatedModules.length * 0.6)) {
-        finalModules = sanitized;
+        8192,
+      );
+      const reviewed = extractJson<{ modules?: unknown[]; notes?: string[] }>(reviewerRaw);
+      if (Array.isArray(reviewed?.modules) && reviewed.modules.length > 0) {
+        const sanitized = sanitizeModules(reviewed.modules);
+        if (sanitized.length >= Math.ceil(batch.length * 0.6)) {
+          finalModules.push(...sanitized);
+        } else {
+          finalModules.push(...batch);
+          reviewerNotes = [...(reviewerNotes ?? []), `批次 ${batchIdx + 1} 审校结果少于预期，已保留原始内容`];
+        }
       } else {
-        reviewerNotes = ['审校输出模块数量过少，已保留生成阶段结果'];
+        finalModules.push(...batch);
       }
+      if (Array.isArray(reviewed?.notes)) {
+        reviewerNotes = [...(reviewerNotes ?? []), ...(reviewed.notes as string[])];
+      }
+    } catch (err) {
+      // Reviewer batch failure is non-fatal; keep generator output for that batch.
+      finalModules.push(...batch);
+      reviewerNotes = [...(reviewerNotes ?? []), `批次 ${batchIdx + 1} 审校失败，已使用生成结果：${(err as Error).message}`];
     }
-    if (Array.isArray(reviewed?.notes)) reviewerNotes = reviewed.notes;
-  } catch (err) {
-    // Reviewer failure is non-fatal; fall back to generator output.
-    reviewerNotes = [`审校阶段失败，已使用生成结果：${(err as Error).message}`];
   }
-  onProgress?.({ stage: 'reviewer', fraction: 1, message: '完成' });
 
   // Ensure every module has an id
   finalModules = finalModules.map((m, i) => ({ ...m, id: m.id || `m${i + 1}` }));

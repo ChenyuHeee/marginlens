@@ -38,7 +38,7 @@ Editorial guidance:
   "definition" for technical terms, "formula" for math, "callout" for warnings/insights/questions,
   "qa" for material derived from user annotations (translations, Q&A), "quiz" sparingly,
   "summary" at the end.
-- Aim for 6–10 modules total (hard cap: 10). Vary sizes for visual rhythm.
+- Aim for 6–14 modules total. Vary sizes for visual rhythm.
 - If the note has annotations, allocate at least one "qa" or "callout" per important annotation.
 
 ${COMMON_RULES}
