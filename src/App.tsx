@@ -8,6 +8,7 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
 import { ShareView } from '@/components/ShareView';
+import { TeachingView } from '@/components/TeachingView';
 import { UsernameSetupDialog } from '@/components/UsernameSetupDialog';
 import { getMyProfile } from '@/lib/profiles';
 import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore, useWorkspaceStore } from '@/stores';
@@ -86,10 +87,36 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ?teach=<docId> URL param — track via state + popstate (must be before any early return)
+  const [teachDocId, setTeachDocId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('teach')
+  );
+  useEffect(() => {
+    const handler = () => {
+      setTeachDocId(new URLSearchParams(window.location.search).get('teach'));
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
+
   // Handle ?share= URL param — render ShareView standalone
   const shareToken = new URLSearchParams(window.location.search).get('share');
   if (shareToken) {
     return <ShareView token={shareToken} />;
+  }
+
+  if (teachDocId) {
+    return (
+      <TeachingView
+        documentId={teachDocId}
+        onClose={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('teach');
+          window.history.pushState({}, '', url.toString());
+          setTeachDocId(null);
+        }}
+      />
+    );
   }
 
   return (

@@ -7,7 +7,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
-import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check, X, ChevronDown, FileText, FileType } from 'lucide-react';
+import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Copy, Check, X, ChevronDown, FileText, FileType, Wand2 } from 'lucide-react';
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
 import { SyncDialog } from './SyncDialog';
@@ -373,6 +373,25 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
           >
             <Share2 size={11} />
             分享
+          </button>
+          <button
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set('teach', documentId);
+              window.history.pushState({}, '', url.toString());
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="mac-btn flex items-center gap-1"
+            style={{
+              fontSize: 11,
+              padding: '3px 10px',
+              background: 'var(--color-primary-light)',
+              color: 'var(--color-primary)',
+            }}
+            title="生成互动学习页"
+          >
+            <Wand2 size={11} />
+            互动
           </button>
           <button
             onClick={toggleFocusMode}
