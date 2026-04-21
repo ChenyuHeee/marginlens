@@ -212,6 +212,42 @@ function describeModuleIssues(raw: unknown[]): string {
   return issues.slice(0, 8).join('; ') || 'unknown validation error';
 }
 
+/**
+ * Ask the LLM to fix its own previously-generated broken output.
+ * Called after a failed generation attempt instead of doing a full regeneration.
+ * Cheaper: no source material in context — LLM only sees the broken JSON + the specific error.
+ */
+async function repairJson(
+  provider: LLMProvider,
+  brokenOutput: string,
+  issue: string,
+  signal?: AbortSignal,
+  onChunk?: (partial: string) => void,
+): Promise<string> {
+  return chatComplete(
+    provider,
+    [
+      {
+        role: 'system',
+        content:
+          'You are a JSON repair assistant. The user will provide you with a malformed or incomplete JSON output and a description of what is wrong. ' +
+          'Your task: output a corrected, COMPLETE version of the JSON that fixes all described issues. ' +
+          'IMPORTANT: Return ONLY the raw JSON — no explanation, no markdown code fences, no extra text.',
+      },
+      {
+        role: 'user',
+        content:
+          `The following JSON output has issues:\n\n${brokenOutput}\n\n` +
+          `Problem: ${issue}\n\n` +
+          `Output the corrected complete JSON now.`,
+      },
+    ],
+    signal,
+    onChunk,
+    8192,
+  );
+}
+
 function buildSourcePayload(doc: Document, annotations: Annotation[]) {
   const annLines = annotations.map((a, i) => ({
     id: a.id || `ann-${i + 1}`,
@@ -314,51 +350,74 @@ export async function generateTeachingSite(
       : '';
     const baseUserMsg = `Source material (JSON):\n${genSourceStr}\n\nPlanner outline:\n${planStr}${batchHint}`;
 
-    let lastBatchError = '';
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const userContent = attempt === 1
-        ? baseUserMsg
-        : `${baseUserMsg}\n\nNOTE: Previous attempt failed because: ${lastBatchError}. Ensure all required fields are present.`;
+    // ── Attempt 1: full generation ─────────────────────────────────────────
+    const genMsg = totalGenBatches > 1
+      ? `并行生成批次 ${batchIdx + 1}/${totalGenBatches}（模块 ${batchIds}）…`
+      : '生成模块内容…';
+    const fStart = GEN_FRAC_START + (genBatchesDone / totalGenBatches) * (GEN_FRAC_END - GEN_FRAC_START);
+    onProgress?.({ stage: 'generator', fraction: fStart, message: genMsg });
 
-      const genMsg = totalGenBatches > 1
-        ? `并行生成批次 ${batchIdx + 1}/${totalGenBatches}（模块 ${batchIds}）…`
-        : attempt === 1 ? '生成模块内容…' : '重试生成…';
+    const raw = await chatComplete(
+      provider,
+      [
+        { role: 'system', content: GENERATOR_SYSTEM },
+        { role: 'user', content: baseUserMsg },
+      ],
+      signal,
+      (partial) => {
+        const f = fStart + Math.min(partial.length / batchEst, 1) * ((GEN_FRAC_END - GEN_FRAC_START) / totalGenBatches);
+        onProgress?.({ stage: 'generator', fraction: f, message: genMsg, streamLane: { key: `gen-${batchIdx}`, label: `G${batchIdx + 1}`, text: partial } });
+      },
+      8192,
+    );
 
-      // Fractional position for this batch (based on batches completed so far)
-      const fStart = GEN_FRAC_START + (genBatchesDone / totalGenBatches) * (GEN_FRAC_END - GEN_FRAC_START);
-      onProgress?.({ stage: 'generator', fraction: fStart, message: genMsg });
-
-      const raw = await chatComplete(
-        provider,
-        [
-          { role: 'system', content: GENERATOR_SYSTEM },
-          { role: 'user', content: userContent },
-        ],
-        signal,
-        (partial) => {
-          const f = fStart + Math.min(partial.length / batchEst, 1) * ((GEN_FRAC_END - GEN_FRAC_START) / totalGenBatches);
-          onProgress?.({ stage: 'generator', fraction: f, message: genMsg, streamLane: { key: `gen-${batchIdx}`, label: `G${batchIdx + 1}`, text: partial } });
-        },
-        8192,
-      );
-
-      try {
-        const parsed = extractJson<{ modules: unknown[] }>(raw);
-        const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
-        const valid = sanitizeModules(rawArr);
-        if (valid.length < 1) {
-          lastBatchError = `No valid modules in batch ${batchIdx + 1}. ${describeModuleIssues(rawArr)}`;
-          console.warn('[Teaching] Generator batch', batchIdx + 1, 'validation failed:', lastBatchError);
-          continue;
-        }
+    let firstError = '';
+    try {
+      const parsed = extractJson<{ modules: unknown[] }>(raw);
+      const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
+      const valid = sanitizeModules(rawArr);
+      if (valid.length >= 1) {
         genBatchesDone++;
         return valid;
-      } catch (e) {
-        lastBatchError = (e as Error).message;
-        console.warn('[Teaching] Generator batch', batchIdx + 1, 'JSON error:', lastBatchError);
       }
+      firstError = `No valid modules in batch ${batchIdx + 1}. ${describeModuleIssues(rawArr)}`;
+      console.warn('[Teaching] Generator batch', batchIdx + 1, 'validation failed:', firstError);
+    } catch (e) {
+      firstError = (e as Error).message;
+      console.warn('[Teaching] Generator batch', batchIdx + 1, 'JSON error:', firstError);
     }
-    throw new Error(`内容生成失败（批次 ${batchIdx + 1} 已重试）：${lastBatchError}`);
+
+    // ── Attempt 2: ask the LLM to repair its own broken output ───────────────
+    // Cheaper and smarter than a full regeneration: no source material in context,
+    // LLM sees exactly what went wrong and fixes the specific issues.
+    const repairMsg = totalGenBatches > 1
+      ? `LLM 修复批次 ${batchIdx + 1}/${totalGenBatches}…`
+      : 'LLM 修复输出…';
+    const repairFrac = fStart + 0.5 * ((GEN_FRAC_END - GEN_FRAC_START) / totalGenBatches);
+    onProgress?.({ stage: 'generator', fraction: repairFrac, message: repairMsg });
+
+    const repairedRaw = await repairJson(
+      provider, raw, firstError, signal,
+      (partial) => {
+        onProgress?.({
+          stage: 'generator', fraction: repairFrac, message: repairMsg,
+          streamLane: { key: `gen-${batchIdx}`, label: `G${batchIdx + 1}`, text: partial },
+        });
+      },
+    );
+
+    try {
+      const parsed = extractJson<{ modules: unknown[] }>(repairedRaw);
+      const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
+      const valid = sanitizeModules(rawArr);
+      if (valid.length >= 1) {
+        genBatchesDone++;
+        return valid;
+      }
+      throw new Error(`修复后仍无有效模块：${describeModuleIssues(rawArr)}`);
+    } catch (e) {
+      throw new Error(`内容生成失败（批次 ${batchIdx + 1} 已 LLM 修复）：${(e as Error).message}`);
+    }
   }
 
   // ── Run all generator batches in PARALLEL ──────────────────────────────────

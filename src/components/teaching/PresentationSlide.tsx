@@ -114,11 +114,15 @@ export function getSteps(m: TeachingModule): number {
 }
 
 // ── Step-reveal style ─────────────────────────────────────────────────────────
+// maxHeight collapses hidden items to zero height so they don't contribute to
+// scrollHeight — preventing the SlideScroller from showing a false overflow hint.
 function rv(shown: boolean): React.CSSProperties {
   return {
     opacity: shown ? 1 : 0,
+    maxHeight: shown ? '1000px' : '0',
+    overflow: 'hidden',
     transform: shown ? 'translateY(0)' : 'translateY(16px)',
-    transition: 'opacity 0.45s cubic-bezier(.16,1,.3,1), transform 0.45s cubic-bezier(.16,1,.3,1)',
+    transition: 'opacity 0.45s cubic-bezier(.16,1,.3,1), transform 0.45s cubic-bezier(.16,1,.3,1), max-height 0.45s cubic-bezier(.16,1,.3,1)',
     pointerEvents: shown ? 'auto' : 'none',
   };
 }
