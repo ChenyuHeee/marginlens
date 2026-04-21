@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, RefreshCw, Loader2, AlertCircle, ChevronLeft, ChevronRight, Share2, Check } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Loader2, AlertCircle, ChevronLeft, ChevronRight, Share2, Check, Cpu, BookOpen, CheckCircle2 } from 'lucide-react';
 import { useAnnotationStore, useSettingsStore } from '@/stores';
 import { getAnnotationsByDocument, getDocument, getTeachingSite, saveTeachingSite, deleteTeachingSite } from '@/lib/db';
 import { generateTeachingSite, type Progress, type Stage } from '@/lib/teaching/pipeline';
@@ -346,42 +346,173 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
 }
 
 // ── Loading pane ──────────────────────────────────────────────────────────────
+const STAGE_ICONS: Record<Stage, React.ElementType> = {
+  planner: BookOpen,
+  generator: Cpu,
+  reviewer: CheckCircle2,
+};
+const STAGE_DESC: Record<Stage, string> = {
+  planner: '分析笔记内容，规划模块结构',
+  generator: '逐条生成教学幻灯片内容',
+  reviewer: '校对事实与一致性',
+};
+
 function LoadingPane({ progress }: { progress: Progress }) {
+  const [elapsed, setElapsed] = useState(0);
+  const [log, setLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (progress.message) {
+      setLog((prev) => {
+        const last = prev[prev.length - 1];
+        if (last === progress.message) return prev;
+        return [...prev.slice(-4), progress.message!];
+      });
+    }
+  }, [progress.message]);
+
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+
   const stages: Stage[] = ['planner', 'generator', 'reviewer'];
   const cur = stages.indexOf(progress.stage);
+  const pct = Math.round(progress.fraction * 100);
+  const isRetrying = progress.message?.includes('重试');
+
   return (
     <div style={{
-      maxWidth: 520, width: '100%', padding: '52px 56px', borderRadius: 24,
-      background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+      maxWidth: 560, width: '100%', padding: '48px 52px', borderRadius: 28,
+      background: 'rgba(255,255,255,0.025)',
+      border: '1px solid rgba(255,255,255,0.07)',
+      boxShadow: '0 0 80px rgba(80,80,200,0.06)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 40 }}>
-        <Loader2 size={22} style={{ color: '#5555e8', animation: 'spin 1s linear infinite' }} />
-        <div style={{ fontSize: 18, fontWeight: 600, color: '#d0d0e8' }}>{progress.message || '生成中…'}</div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 36 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Loader2 size={20} style={{ color: '#6060dd', animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
+          <span style={{ fontSize: 17, fontWeight: 600, color: '#d0d0e8' }}>
+            {isRetrying ? '正在重试生成…' : '正在生成教学内容…'}
+          </span>
+        </div>
+        <span style={{
+          fontSize: 12, color: '#35355a', fontVariantNumeric: 'tabular-nums',
+          background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '3px 8px',
+        }}>
+          {mm}:{ss}
+        </span>
       </div>
-      <div style={{ display: 'flex', gap: 0 }}>
-        {stages.map((s, i) => (
-          <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%', marginBottom: 10,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: i < cur ? '#5555e8' : i === cur ? 'rgba(85,85,232,0.20)' : 'rgba(255,255,255,0.05)',
-              border: i === cur ? '2px solid #5555e8' : '2px solid transparent',
-              color: i < cur ? '#fff' : i === cur ? '#9090e0' : '#30305a',
-              fontSize: 14, fontWeight: 700,
-            }}>{i + 1}</div>
-            <div style={{ fontSize: 12, color: i === cur ? '#9090e0' : '#28284a', textAlign: 'center' }}>
-              {STAGE_LABELS[s]}
+
+      {/* Stage pipeline */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 32 }}>
+        {stages.map((s, i) => {
+          const Icon = STAGE_ICONS[s];
+          const done = i < cur;
+          const active = i === cur;
+          return (
+            <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              {/* Connector line */}
+              {i > 0 && (
+                <div style={{
+                  position: 'absolute', top: 18, right: '50%', left: '-50%',
+                  height: 2,
+                  background: done || active
+                    ? 'linear-gradient(90deg,#4040cc,#5555e8)'
+                    : 'rgba(255,255,255,0.06)',
+                  transition: 'background 0.4s',
+                }} />
+              )}
+              {/* Icon circle */}
+              <div style={{
+                position: 'relative', zIndex: 1,
+                width: 38, height: 38, borderRadius: '50%', marginBottom: 10,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: done
+                  ? '#5555e8'
+                  : active
+                    ? 'rgba(85,85,232,0.15)'
+                    : 'rgba(255,255,255,0.04)',
+                border: active
+                  ? '2px solid #5555e8'
+                  : done
+                    ? '2px solid #5555e8'
+                    : '2px solid rgba(255,255,255,0.08)',
+                boxShadow: active ? '0 0 16px rgba(85,85,232,0.35)' : 'none',
+                transition: 'all 0.4s',
+              }}>
+                {done
+                  ? <Check size={16} color="#fff" />
+                  : <Icon size={15} color={active ? '#9090e8' : '#252550'} />}
+                {/* Pulse ring for active */}
+                {active && (
+                  <div style={{
+                    position: 'absolute', inset: -6, borderRadius: '50%',
+                    border: '1.5px solid rgba(85,85,232,0.3)',
+                    animation: 'tp-pulse-ring 1.8s ease-out infinite',
+                  }} />
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: active ? '#9090d8' : done ? '#5a5ac0' : '#28284a', textAlign: 'center', fontWeight: active ? 600 : 400 }}>
+                {STAGE_LABELS[s]}
+              </div>
+              {active && (
+                <div style={{ fontSize: 10, color: '#35355a', textAlign: 'center', marginTop: 3, maxWidth: 90 }}>
+                  {STAGE_DESC[s]}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <div style={{ marginTop: 32, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+
+      {/* Progress bar */}
+      <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.06)', marginBottom: 20, overflow: 'hidden' }}>
         <div style={{
-          height: '100%', borderRadius: 2,
-          background: 'linear-gradient(90deg,#4040cc,#7070f0)',
-          width: `${Math.round(progress.fraction * 100)}%`,
-          transition: 'width 0.4s ease',
-        }} />
+          height: '100%', borderRadius: 3,
+          background: isRetrying
+            ? 'linear-gradient(90deg,#9040cc,#c060f0)'
+            : 'linear-gradient(90deg,#4040cc,#7070f0)',
+          width: `${pct}%`,
+          transition: 'width 0.5s ease, background 0.3s',
+          position: 'relative',
+        }}>
+          {/* Shimmer */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.18) 50%,transparent 100%)',
+            animation: 'tp-shimmer 1.6s ease-in-out infinite',
+          }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+        <span style={{ fontSize: 11, color: '#3a3a6a' }}>{STAGE_LABELS[progress.stage]}</span>
+        <span style={{ fontSize: 11, color: '#3a3a6a', fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
+      </div>
+
+      {/* Message log */}
+      <div style={{
+        borderRadius: 10, padding: '12px 16px',
+        background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)',
+        display: 'flex', flexDirection: 'column', gap: 4, minHeight: 56,
+      }}>
+        {log.length === 0
+          ? <span style={{ fontSize: 12, color: '#282848' }}>等待响应…</span>
+          : log.map((msg, i) => (
+            <span key={i} style={{
+              fontSize: 12,
+              color: i === log.length - 1
+                ? (isRetrying ? '#a060d0' : '#6060cc')
+                : '#252548',
+              transition: 'color 0.3s',
+            }}>
+              {i === log.length - 1 ? '▶ ' : '  '}{msg}
+            </span>
+          ))
+        }
       </div>
     </div>
   );

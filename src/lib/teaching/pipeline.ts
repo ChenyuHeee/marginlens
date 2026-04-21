@@ -39,12 +39,21 @@ async function chatComplete(
 /** Extract a JSON object from arbitrary LLM output, tolerating code fences. */
 function extractJson<T = unknown>(raw: string): T {
   let s = raw.trim();
-  // Strip ```json ... ``` or ``` ... ``` fences
-  const fence = s.match(/^```(?:json)?\s*([\s\S]*?)```\s*$/i);
+  // Strip ```json ... ``` or ``` ... ``` fences (they may appear anywhere in the string)
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) s = fence[1].trim();
-  // Find the first {...} block by counting braces
-  const start = s.indexOf('{');
-  if (start === -1) throw new Error('LLM output contains no JSON object');
+  // Prefer a JSON object block first...
+  const objStart = s.indexOf('{');
+  // ...but also look for a bare array (LLM sometimes skips the wrapper object)
+  const arrStart = s.indexOf('[');
+  const start = objStart === -1
+    ? arrStart
+    : arrStart !== -1 && arrStart < objStart
+      ? arrStart
+      : objStart;
+  if (start === -1) throw new Error('LLM output contains no JSON');
+  const opener = s[start];
+  const closer = opener === '{' ? '}' : ']';
   let depth = 0;
   let inString = false;
   let escape = false;
@@ -54,12 +63,15 @@ function extractJson<T = unknown>(raw: string): T {
     if (ch === '\\') { escape = true; continue; }
     if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
-    if (ch === '{') depth++;
-    else if (ch === '}') {
+    if (ch === opener) depth++;
+    else if (ch === closer) {
       depth--;
       if (depth === 0) {
         const candidate = s.slice(start, i + 1);
-        return JSON.parse(candidate) as T;
+        const parsed = JSON.parse(candidate) as T;
+        // If we got a bare array, wrap it in { modules: [...] } for the Generator caller
+        if (Array.isArray(parsed)) return { modules: parsed } as unknown as T;
+        return parsed;
       }
     }
   }
@@ -273,6 +285,7 @@ export async function generateTeachingSite(
       if (valid.length < 2) {
         lastGenError = `Only ${valid.length} module(s) passed validation out of ${rawArr.length}. ` +
           describeModuleIssues(rawArr);
+        console.warn('[Teaching] Generator validation failed (attempt', attempt, '):', lastGenError, '\nFirst 500 chars:', raw.slice(0, 500));
         continue;
       }
 
@@ -280,6 +293,7 @@ export async function generateTeachingSite(
       break;
     } catch (e) {
       lastGenError = (e as Error).message;
+      console.warn('[Teaching] Generator JSON parse error (attempt', attempt, '):', lastGenError, '\nFirst 500 chars:', raw.slice(0, 500));
     }
   }
 
