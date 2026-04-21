@@ -351,30 +351,21 @@ const STAGE_ICONS: Record<Stage, React.ElementType> = {
   generator: Cpu,
   reviewer: CheckCircle2,
 };
-const STAGE_DESC: Record<Stage, string> = {
-  planner: '分析笔记内容，规划模块结构',
-  generator: '逐条生成教学幻灯片内容',
-  reviewer: '校对事实与一致性',
-};
 
 function LoadingPane({ progress }: { progress: Progress }) {
   const [elapsed, setElapsed] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // Auto-scroll the stream log to the bottom whenever new content arrives
   useEffect(() => {
-    if (progress.message) {
-      setLog((prev) => {
-        const last = prev[prev.length - 1];
-        if (last === progress.message) return prev;
-        return [...prev.slice(-4), progress.message!];
-      });
-    }
-  }, [progress.message]);
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [progress.streamBuffer]);
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
@@ -384,18 +375,23 @@ function LoadingPane({ progress }: { progress: Progress }) {
   const pct = Math.round(progress.fraction * 100);
   const isRetrying = progress.message?.includes('重试');
 
+  // Derive stream lines from the buffer — show last 60 lines, trim leading whitespace
+  const rawLines = (progress.streamBuffer ?? '').split('\n');
+  const streamLines = rawLines.slice(-60);
+
   return (
     <div style={{
-      maxWidth: 560, width: '100%', padding: '48px 52px', borderRadius: 28,
+      maxWidth: 680, width: '100%', padding: '36px 44px', borderRadius: 28,
       background: 'rgba(255,255,255,0.025)',
       border: '1px solid rgba(255,255,255,0.07)',
       boxShadow: '0 0 80px rgba(80,80,200,0.06)',
+      display: 'flex', flexDirection: 'column', gap: 24,
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 36 }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Loader2 size={20} style={{ color: '#6060dd', animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
-          <span style={{ fontSize: 17, fontWeight: 600, color: '#d0d0e8' }}>
+          <Loader2 size={18} style={{ color: '#6060dd', animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
+          <span style={{ fontSize: 16, fontWeight: 600, color: '#d0d0e8' }}>
             {isRetrying ? '正在重试生成…' : '正在生成教学内容…'}
           </span>
         </div>
@@ -408,46 +404,30 @@ function LoadingPane({ progress }: { progress: Progress }) {
       </div>
 
       {/* Stage pipeline */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
         {stages.map((s, i) => {
           const Icon = STAGE_ICONS[s];
           const done = i < cur;
           const active = i === cur;
           return (
             <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-              {/* Connector line */}
               {i > 0 && (
                 <div style={{
-                  position: 'absolute', top: 18, right: '50%', left: '-50%',
-                  height: 2,
-                  background: done || active
-                    ? 'linear-gradient(90deg,#4040cc,#5555e8)'
-                    : 'rgba(255,255,255,0.06)',
+                  position: 'absolute', top: 18, right: '50%', left: '-50%', height: 2,
+                  background: done || active ? 'linear-gradient(90deg,#4040cc,#5555e8)' : 'rgba(255,255,255,0.06)',
                   transition: 'background 0.4s',
                 }} />
               )}
-              {/* Icon circle */}
               <div style={{
                 position: 'relative', zIndex: 1,
-                width: 38, height: 38, borderRadius: '50%', marginBottom: 10,
+                width: 36, height: 36, borderRadius: '50%', marginBottom: 8,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: done
-                  ? '#5555e8'
-                  : active
-                    ? 'rgba(85,85,232,0.15)'
-                    : 'rgba(255,255,255,0.04)',
-                border: active
-                  ? '2px solid #5555e8'
-                  : done
-                    ? '2px solid #5555e8'
-                    : '2px solid rgba(255,255,255,0.08)',
+                background: done ? '#5555e8' : active ? 'rgba(85,85,232,0.15)' : 'rgba(255,255,255,0.04)',
+                border: done || active ? '2px solid #5555e8' : '2px solid rgba(255,255,255,0.08)',
                 boxShadow: active ? '0 0 16px rgba(85,85,232,0.35)' : 'none',
                 transition: 'all 0.4s',
               }}>
-                {done
-                  ? <Check size={16} color="#fff" />
-                  : <Icon size={15} color={active ? '#9090e8' : '#252550'} />}
-                {/* Pulse ring for active */}
+                {done ? <Check size={14} color="#fff" /> : <Icon size={14} color={active ? '#9090e8' : '#252550'} />}
                 {active && (
                   <div style={{
                     position: 'absolute', inset: -6, borderRadius: '50%',
@@ -456,63 +436,79 @@ function LoadingPane({ progress }: { progress: Progress }) {
                   }} />
                 )}
               </div>
-              <div style={{ fontSize: 11, color: active ? '#9090d8' : done ? '#5a5ac0' : '#28284a', textAlign: 'center', fontWeight: active ? 600 : 400 }}>
+              <div style={{ fontSize: 11, color: active ? '#9090d8' : done ? '#5a5ac0' : '#28284a', fontWeight: active ? 600 : 400 }}>
                 {STAGE_LABELS[s]}
               </div>
-              {active && (
-                <div style={{ fontSize: 10, color: '#35355a', textAlign: 'center', marginTop: 3, maxWidth: 90 }}>
-                  {STAGE_DESC[s]}
-                </div>
-              )}
             </div>
           );
         })}
       </div>
 
-      {/* Progress bar */}
-      <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.06)', marginBottom: 20, overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', borderRadius: 3,
-          background: isRetrying
-            ? 'linear-gradient(90deg,#9040cc,#c060f0)'
-            : 'linear-gradient(90deg,#4040cc,#7070f0)',
-          width: `${pct}%`,
-          transition: 'width 0.5s ease, background 0.3s',
-          position: 'relative',
-        }}>
-          {/* Shimmer */}
+      {/* Progress bar + pct */}
+      <div>
+        <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', marginBottom: 6 }}>
           <div style={{
-            position: 'absolute', inset: 0,
-            background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.18) 50%,transparent 100%)',
-            animation: 'tp-shimmer 1.6s ease-in-out infinite',
-          }} />
+            height: '100%', borderRadius: 3,
+            background: isRetrying ? 'linear-gradient(90deg,#9040cc,#c060f0)' : 'linear-gradient(90deg,#4040cc,#7070f0)',
+            width: `${pct}%`, transition: 'width 0.35s ease', position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.18) 50%,transparent 100%)',
+              animation: 'tp-shimmer 1.6s ease-in-out infinite',
+            }} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 11, color: '#3a3a6a' }}>{progress.message || STAGE_LABELS[progress.stage]}</span>
+          <span style={{ fontSize: 11, color: '#3a3a6a', fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-        <span style={{ fontSize: 11, color: '#3a3a6a' }}>{STAGE_LABELS[progress.stage]}</span>
-        <span style={{ fontSize: 11, color: '#3a3a6a', fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
-      </div>
 
-      {/* Message log */}
+      {/* Live stream log */}
       <div style={{
-        borderRadius: 10, padding: '12px 16px',
-        background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)',
-        display: 'flex', flexDirection: 'column', gap: 4, minHeight: 56,
+        borderRadius: 12, overflow: 'hidden',
+        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(0,0,0,0.35)',
       }}>
-        {log.length === 0
-          ? <span style={{ fontSize: 12, color: '#282848' }}>等待响应…</span>
-          : log.map((msg, i) => (
-            <span key={i} style={{
-              fontSize: 12,
-              color: i === log.length - 1
-                ? (isRetrying ? '#a060d0' : '#6060cc')
-                : '#252548',
-              transition: 'color 0.3s',
-            }}>
-              {i === log.length - 1 ? '▶ ' : '  '}{msg}
-            </span>
-          ))
-        }
+        {/* Title bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 7, padding: '7px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgba(255,255,255,0.025)',
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff5f57' }} />
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#febc2e' }} />
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
+          <span style={{ fontSize: 10, color: '#30305a', marginLeft: 6, fontFamily: 'monospace' }}>
+            llm stream — {STAGE_LABELS[progress.stage]}
+          </span>
+        </div>
+        {/* Log body */}
+        <div
+          ref={logRef}
+          style={{
+            height: 180, overflowY: 'auto', padding: '10px 14px',
+            fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+            fontSize: 11, lineHeight: 1.65, color: '#5a5a9a',
+            wordBreak: 'break-all', whiteSpace: 'pre-wrap',
+            scrollbarWidth: 'none',
+          }}
+        >
+          {streamLines.length === 0 ? (
+            <span style={{ color: '#28284a' }}>等待 LLM 响应<span style={{ animation: 'tp-blink 1s step-end infinite' }}>_</span></span>
+          ) : (
+            streamLines.map((line, i) => {
+              const isLast = i === streamLines.length - 1;
+              return (
+                <div key={i} style={{ color: isLast ? '#8888cc' : '#3a3a70' }}>
+                  {line || ' '}
+                  {isLast && <span style={{ animation: 'tp-blink 0.8s step-end infinite', color: '#5555aa' }}>▌</span>}
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

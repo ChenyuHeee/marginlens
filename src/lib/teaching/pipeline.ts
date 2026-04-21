@@ -10,6 +10,8 @@ export interface Progress {
   /** 0..1 */
   fraction: number;
   message?: string;
+  /** Live partial output from the current LLM call — for streaming log display */
+  streamBuffer?: string;
 }
 
 /**
@@ -21,6 +23,7 @@ async function chatComplete(
   provider: LLMProvider,
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
   signal?: AbortSignal,
+  onChunk?: (partial: string) => void,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let buffer = '';
@@ -29,7 +32,10 @@ async function chatComplete(
       provider,
       messages,
       {
-        onToken: (t) => { buffer += t; },
+        onToken: (t) => {
+          buffer += t;
+          onChunk?.(buffer);
+        },
         onDone: () => resolve(buffer),
         onError: (e) => reject(e),
         onUsage: ({ promptTokens, completionTokens }) => {
@@ -240,7 +246,9 @@ export async function generateTeachingSite(
   const sourceStr = JSON.stringify(source, null, 2);
 
   // ─── 1) Planner ───────────────────────────────────────────────
-  onProgress?.({ stage: 'planner', fraction: 0.05, message: '编排模块结构…' });
+  // Estimate ~1500 chars for planner output; fraction interpolates 0.03→0.30
+  const PLANNER_EST = 1500;
+  onProgress?.({ stage: 'planner', fraction: 0.03, message: '编排模块结构…' });
   const plannerRaw = await chatComplete(
     provider,
     [
@@ -248,12 +256,16 @@ export async function generateTeachingSite(
       { role: 'user', content: `Source material (JSON):\n${sourceStr}` },
     ],
     signal,
+    (partial) => {
+      const frac = 0.03 + Math.min(partial.length / PLANNER_EST, 1) * 0.27;
+      onProgress?.({ stage: 'planner', fraction: frac, message: '编排模块结构…', streamBuffer: partial });
+    },
   );
   const plan = extractJson<PlannerOutline>(plannerRaw);
   if (!plan?.outline?.length) {
     throw new Error('Planner returned an empty outline');
   }
-  onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）` });
+  onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）`, streamBuffer: plannerRaw });
 
   // ─── 2) Generator (with retry) ────────────────────────────────
   const genUserMsg = `Source material (JSON):\n${sourceStr}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}`;
@@ -275,13 +287,16 @@ export async function generateTeachingSite(
       { role: 'user', content: userContent },
     ];
 
-    onProgress?.({
-      stage: 'generator',
-      fraction: 0.38 + (attempt - 1) * 0.12,
-      message: attempt === 1 ? '生成模块内容…' : `重试生成（第 ${attempt} 次）…`,
-    });
+    // Generator output estimated ~8000 chars; each attempt spans 0.12 of the bar
+    const GEN_EST = 8000;
+    const genBase = 0.36 + (attempt - 1) * 0.14;
+    const genMsg = attempt === 1 ? '生成模块内容…' : `重试生成（第 ${attempt} 次）…`;
+    onProgress?.({ stage: 'generator', fraction: genBase, message: genMsg });
 
-    const raw = await chatComplete(provider, messages, signal);
+    const raw = await chatComplete(provider, messages, signal, (partial) => {
+      const frac = genBase + Math.min(partial.length / GEN_EST, 1) * 0.22;
+      onProgress?.({ stage: 'generator', fraction: frac, message: genMsg, streamBuffer: partial });
+    });
 
     try {
       const parsed = extractJson<{ modules: unknown[] }>(raw);
@@ -306,10 +321,12 @@ export async function generateTeachingSite(
   if (!generatedModules) {
     throw new Error(`内容生成失败（已重试）：${lastGenError}`);
   }
-  onProgress?.({ stage: 'generator', fraction: 0.7, message: `已生成 ${generatedModules.length} 个模块` });
+  onProgress?.({ stage: 'generator', fraction: 0.70, message: `已生成 ${generatedModules.length} 个模块` });
 
   // ─── 3) Reviewer ──────────────────────────────────────────────
-  onProgress?.({ stage: 'reviewer', fraction: 0.78, message: '审校事实与一致性…' });
+  // Reviewer output estimated ~8000 chars; fraction spans 0.72→0.97
+  const REV_EST = 8000;
+  onProgress?.({ stage: 'reviewer', fraction: 0.72, message: '审校事实与一致性…' });
   let finalModules = generatedModules;
   let reviewerNotes: string[] | undefined;
   try {
@@ -323,6 +340,10 @@ export async function generateTeachingSite(
         },
       ],
       signal,
+      (partial) => {
+        const frac = 0.72 + Math.min(partial.length / REV_EST, 1) * 0.25;
+        onProgress?.({ stage: 'reviewer', fraction: frac, message: '审校事实与一致性…', streamBuffer: partial });
+      },
     );
     const reviewed = extractJson<{ modules?: unknown[]; notes?: string[] }>(reviewerRaw);
     if (Array.isArray(reviewed?.modules) && reviewed.modules.length > 0) {
