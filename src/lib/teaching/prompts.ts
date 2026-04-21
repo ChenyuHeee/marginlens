@@ -81,15 +81,6 @@ Slide overflow limits (STRICT — each module must fit one screen without scroll
 - definition.definition + definition.example together: MAX 150 words.
 - hero.summary: MAX 80 words.
 - Do NOT use deeply-nested Markdown lists; prefer flat bullet lists.
-
-Slide overflow limits (STRICT — each module must fit one screen without scrolling):
-- keypoints / summary: MAX 7 items. If source has more, merge similar points or prioritise top 7.
-- section.content: MAX 300 words of Markdown. Split longer content across multiple section modules.
-- callout.body: MAX 120 words.
-- qa.answer: MAX 180 words. Summarise if longer.
-- definition.definition + definition.example together: MAX 150 words.
-- hero.summary: MAX 80 words.
-- Do NOT use deeply-nested Markdown lists; prefer flat bullet lists.
 `.trim();
 
 export const REVIEWER_SYSTEM = `

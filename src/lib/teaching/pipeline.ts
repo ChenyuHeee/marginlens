@@ -74,6 +74,21 @@ const VALID_CALLOUT_VARIANTS = new Set(['note', 'tip', 'warning', 'question', 'i
 function str(v: unknown): v is string { return typeof v === 'string' && v.trim().length > 0; }
 function arr(v: unknown): v is unknown[] { return Array.isArray(v) && v.length > 0; }
 
+/** Coerce an array that may contain objects with a `.text` field into string[]. */
+function coerceStringArray(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length === 0) return null;
+  const result: string[] = [];
+  for (const item of v) {
+    if (typeof item === 'string' && item.trim()) result.push(item);
+    else if (item && typeof item === 'object') {
+      const s = (item as Record<string, unknown>).text ?? (item as Record<string, unknown>).content ?? (item as Record<string, unknown>).value;
+      if (typeof s === 'string' && s.trim()) result.push(s);
+      else return null; // Can't auto-repair
+    } else return null;
+  }
+  return result.length ? result : null;
+}
+
 /** Validate one module; returns a (possibly lightly-patched) valid module or null. */
 function validateModule(m: unknown): TeachingModule | null {
   if (!m || typeof m !== 'object') return null;
@@ -88,28 +103,39 @@ function validateModule(m: unknown): TeachingModule | null {
       return o as unknown as TeachingModule;
 
     case 'section':
+      // Accept common field name aliases
+      if (!str(o.content)) o.content = o.body ?? o.text;
       if (!str(o.title) || !str(o.content)) return null;
       return o as unknown as TeachingModule;
 
-    case 'keypoints':
-      if (!arr(o.items) || !(o.items as unknown[]).every(s => typeof s === 'string')) return null;
+    case 'keypoints': {
+      // Accept "points" as alias for "items"
+      if (!arr(o.items) && arr(o.points)) o.items = o.points;
+      const fixed = coerceStringArray(o.items);
+      if (!fixed) return null;
+      o.items = fixed;
       if (o.reveal !== 'one-by-one' && o.reveal !== 'all') delete o.reveal;
       return o as unknown as TeachingModule;
+    }
 
     case 'definition':
+      if (!str(o.definition)) o.definition = o.description ?? o.body ?? o.text;
       if (!str(o.term) || !str(o.definition)) return null;
       return o as unknown as TeachingModule;
 
     case 'formula':
+      if (!str(o.latex)) o.latex = o.formula ?? o.equation;
       if (!str(o.latex)) return null;
       return o as unknown as TeachingModule;
 
     case 'callout':
+      if (!str(o.body)) o.body = o.text ?? o.content;
       if (!str(o.body)) return null;
       if (!VALID_CALLOUT_VARIANTS.has(o.variant as string)) o.variant = 'note';
       return o as unknown as TeachingModule;
 
     case 'qa':
+      if (!str(o.answer)) o.answer = o.response ?? o.text ?? o.body;
       if (!str(o.question) || !str(o.answer)) return null;
       return o as unknown as TeachingModule;
 
@@ -121,10 +147,15 @@ function validateModule(m: unknown): TeachingModule | null {
       return o as unknown as TeachingModule;
     }
 
-    case 'summary':
-      if (!arr(o.points) || !(o.points as unknown[]).every(s => typeof s === 'string')) return null;
+    case 'summary': {
+      // Accept "items" as alias for "points"
+      if (!arr(o.points) && arr(o.items)) o.points = o.items;
+      const fixedPts = coerceStringArray(o.points);
+      if (!fixedPts) return null;
+      o.points = fixedPts;
       if (o.reveal !== 'one-by-one' && o.reveal !== 'all') delete o.reveal;
       return o as unknown as TeachingModule;
+    }
 
     default:
       return null; // Unknown type — discard
@@ -209,38 +240,33 @@ export async function generateTeachingSite(
   // ─── 2) Generator (with retry) ────────────────────────────────
   const genUserMsg = `Source material (JSON):\n${sourceStr}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}`;
   type GenMsg = { role: 'system' | 'user' | 'assistant'; content: string };
-  const baseGenMessages: GenMsg[] = [
-    { role: 'system', content: GENERATOR_SYSTEM },
-    { role: 'user', content: genUserMsg },
-  ];
 
   let generatedModules: TeachingModule[] | null = null;
-  let lastGenRaw = '';
   let lastGenError = '';
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const messages: GenMsg[] = attempt === 1
-      ? baseGenMessages
-      : [
-          ...baseGenMessages,
-          { role: 'assistant', content: lastGenRaw },
-          {
-            role: 'user',
-            content: `Your previous output had these issues: ${lastGenError}.\n` +
-              `Please fix them and output ONLY the corrected JSON object with a "modules" array.`,
-          },
-        ];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    // Retry uses a fresh conversation (not appending previous output) to avoid
+    // context bloat. Error hint is prepended to the user turn instead.
+    const userContent = attempt === 1
+      ? genUserMsg
+      : `${genUserMsg}\n\nNOTE: A previous attempt was rejected because: ${lastGenError}. ` +
+        `Ensure every module has all required fields as specified in the schema.`;
+
+    const messages: GenMsg[] = [
+      { role: 'system', content: GENERATOR_SYSTEM },
+      { role: 'user', content: userContent },
+    ];
 
     onProgress?.({
       stage: 'generator',
-      fraction: 0.38 + (attempt - 1) * 0.08,
+      fraction: 0.38 + (attempt - 1) * 0.12,
       message: attempt === 1 ? '生成模块内容…' : `重试生成（第 ${attempt} 次）…`,
     });
 
-    lastGenRaw = await chatComplete(provider, messages, signal);
+    const raw = await chatComplete(provider, messages, signal);
 
     try {
-      const parsed = extractJson<{ modules: unknown[] }>(lastGenRaw);
+      const parsed = extractJson<{ modules: unknown[] }>(raw);
       const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
       const valid = sanitizeModules(rawArr);
 
@@ -258,7 +284,7 @@ export async function generateTeachingSite(
   }
 
   if (!generatedModules) {
-    throw new Error(`内容生成失败（已重试 3 次）：${lastGenError}`);
+    throw new Error(`内容生成失败（已重试）：${lastGenError}`);
   }
   onProgress?.({ stage: 'generator', fraction: 0.7, message: `已生成 ${generatedModules.length} 个模块` });
 
