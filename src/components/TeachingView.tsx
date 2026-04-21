@@ -22,6 +22,8 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
   const [site, setSite] = useState<TeachingSite | null>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [streamLanes, setStreamLanes] = useState<Record<string, { label: string; text: string }>>({});
+  const prevStageRef = useRef<Stage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [docTitle, setDocTitle] = useState('');
   const abortRef = useRef<AbortController | null>(null);
@@ -69,7 +71,18 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
       abortRef.current = ctrl;
       const result = await generateTeachingSite(doc, annotations, provider, {
         signal: ctrl.signal,
-        onProgress: (p) => setProgress(p),
+        onProgress: (p) => {
+          setProgress(p);
+          // Clear lanes on stage transition; accumulate lane patches
+          if (prevStageRef.current !== p.stage) {
+            prevStageRef.current = p.stage;
+            setStreamLanes({});
+          }
+          if (p.streamLane) {
+            const { key, label, text } = p.streamLane;
+            setStreamLanes((prev) => ({ ...prev, [key]: { label, text } }));
+          }
+        },
       });
       await saveTeachingSite(result);
       setSite(result);
@@ -264,7 +277,7 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
           onClick={(e) => e.stopPropagation()}
           style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          <LoadingPane progress={progress} />
+          <LoadingPane progress={progress} streamLanes={streamLanes} />
         </div>
       ) : error ? (
         <div
@@ -352,20 +365,24 @@ const STAGE_ICONS: Record<Stage, React.ElementType> = {
   reviewer: CheckCircle2,
 };
 
-function LoadingPane({ progress }: { progress: Progress }) {
+function LoadingPane({ progress, streamLanes }: {
+  progress: Progress;
+  streamLanes: Record<string, { label: string; text: string }>;
+}) {
   const [elapsed, setElapsed] = useState(0);
-  const logRef = useRef<HTMLDivElement>(null);
+  const laneRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Auto-scroll the stream log to the bottom whenever new content arrives
+  // Auto-scroll each lane panel to bottom when its text updates
   useEffect(() => {
-    const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [progress.streamBuffer]);
+    for (const el of Object.values(laneRefs.current)) {
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  }, [streamLanes]);
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
@@ -375,9 +392,10 @@ function LoadingPane({ progress }: { progress: Progress }) {
   const pct = Math.round(progress.fraction * 100);
   const isRetrying = progress.message?.includes('重试');
 
-  // Derive stream lines from the buffer — show last 60 lines, trim leading whitespace
-  const rawLines = (progress.streamBuffer ?? '').split('\n');
-  const streamLines = rawLines.slice(-60);
+  // Lane color palette — cycles for multiple batches
+  const LANE_COLORS = ['#5555e8', '#44aacc', '#44cc88', '#cc8844', '#cc4488', '#9944cc'];
+  const laneEntries = Object.entries(streamLanes);
+  const laneCount = laneEntries.length;
 
   return (
     <div style={{
@@ -465,7 +483,7 @@ function LoadingPane({ progress }: { progress: Progress }) {
         </div>
       </div>
 
-      {/* Live stream log */}
+      {/* Live stream log — one panel per lane */}
       <div style={{
         borderRadius: 12, overflow: 'hidden',
         border: '1px solid rgba(255,255,255,0.06)',
@@ -482,33 +500,90 @@ function LoadingPane({ progress }: { progress: Progress }) {
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28c840' }} />
           <span style={{ fontSize: 10, color: '#30305a', marginLeft: 6, fontFamily: 'monospace' }}>
             llm stream — {STAGE_LABELS[progress.stage]}
+            {laneCount > 1 && <span style={{ color: '#44448a', marginLeft: 6 }}>({laneCount} 并行)</span>}
           </span>
         </div>
-        {/* Log body */}
-        <div
-          ref={logRef}
-          style={{
-            height: 180, overflowY: 'auto', padding: '10px 14px',
-            fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-            fontSize: 11, lineHeight: 1.65, color: '#5a5a9a',
-            wordBreak: 'break-all', whiteSpace: 'pre-wrap',
-            scrollbarWidth: 'none',
-          }}
-        >
-          {streamLines.length === 0 ? (
+
+        {/* Lane panels */}
+        {laneCount === 0 ? (
+          <div style={{
+            height: 120, display: 'flex', alignItems: 'center', padding: '0 14px',
+            fontFamily: '"SF Mono","Fira Code","Cascadia Code",monospace', fontSize: 11,
+          }}>
             <span style={{ color: '#28284a' }}>等待 LLM 响应<span style={{ animation: 'tp-blink 1s step-end infinite' }}>_</span></span>
-          ) : (
-            streamLines.map((line, i) => {
-              const isLast = i === streamLines.length - 1;
-              return (
-                <div key={i} style={{ color: isLast ? '#8888cc' : '#3a3a70' }}>
-                  {line || ' '}
-                  {isLast && <span style={{ animation: 'tp-blink 0.8s step-end infinite', color: '#5555aa' }}>▌</span>}
+          </div>
+        ) : laneCount === 1 ? (
+          // Single lane — full height, no header tag
+          (() => {
+            const [key, lane] = laneEntries[0];
+            const lines = lane.text.split('\n').slice(-60);
+            return (
+              <div
+                ref={(el) => { laneRefs.current[key] = el; }}
+                style={{
+                  height: 180, overflowY: 'auto', padding: '10px 14px',
+                  fontFamily: '"SF Mono","Fira Code","Cascadia Code",monospace',
+                  fontSize: 11, lineHeight: 1.65, color: '#5a5a9a',
+                  wordBreak: 'break-all', whiteSpace: 'pre-wrap', scrollbarWidth: 'none',
+                }}
+              >
+                {lines.map((line, i) => {
+                  const isLast = i === lines.length - 1;
+                  return (
+                    <div key={i} style={{ color: isLast ? '#8888cc' : '#3a3a70' }}>
+                      {line || ' '}
+                      {isLast && <span style={{ animation: 'tp-blink 0.8s step-end infinite', color: '#5555aa' }}>▌</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()
+        ) : (
+          // Multi-lane: stacked panels, each showing last 5 lines
+          laneEntries.map(([key, lane], laneIdx) => {
+            const color = LANE_COLORS[laneIdx % LANE_COLORS.length];
+            const lines = lane.text.split('\n').slice(-5);
+            const isLast = laneIdx === laneEntries.length - 1;
+            return (
+              <div key={key} style={{ borderBottom: isLast ? 'none' : '1px solid rgba(255,255,255,0.04)' }}>
+                {/* Lane header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+                  background: 'rgba(255,255,255,0.015)',
+                }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{
+                    fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
+                    color, letterSpacing: 1,
+                  }}>
+                    {lane.label}
+                  </span>
                 </div>
-              );
-            })
-          )}
-        </div>
+                {/* Lane stream */}
+                <div
+                  ref={(el) => { laneRefs.current[key] = el; }}
+                  style={{
+                    maxHeight: 88, overflowY: 'auto', padding: '4px 14px 8px',
+                    fontFamily: '"SF Mono","Fira Code","Cascadia Code",monospace',
+                    fontSize: 10.5, lineHeight: 1.6, color: '#4a4a80',
+                    wordBreak: 'break-all', whiteSpace: 'pre-wrap', scrollbarWidth: 'none',
+                  }}
+                >
+                  {lines.map((line, i) => {
+                    const isLastLine = i === lines.length - 1;
+                    return (
+                      <div key={i} style={{ color: isLastLine ? color : `${color}66` }}>
+                        {line || ' '}
+                        {isLastLine && <span style={{ animation: 'tp-blink 0.8s step-end infinite', color }}>▌</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

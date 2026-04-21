@@ -10,8 +10,12 @@ export interface Progress {
   /** 0..1 */
   fraction: number;
   message?: string;
-  /** Live partial output from the current LLM call — for streaming log display */
-  streamBuffer?: string;
+  /**
+   * Streaming log patch for one lane. Parent should accumulate
+   * { [key]: { label, text } } across all onProgress calls.
+   * key format: "planner" | "gen-N" | "rev-N"
+   */
+  streamLane?: { key: string; label: string; text: string };
 }
 
 /**
@@ -263,14 +267,14 @@ export async function generateTeachingSite(
     signal,
     (partial) => {
       const frac = 0.03 + Math.min(partial.length / PLANNER_EST, 1) * 0.27;
-      onProgress?.({ stage: 'planner', fraction: frac, message: '编排模块结构…', streamBuffer: partial });
+      onProgress?.({ stage: 'planner', fraction: frac, message: '编排模块结构…', streamLane: { key: 'planner', label: 'Planner', text: partial } });
     },
   );
   const plan = extractJson<PlannerOutline>(plannerRaw);
   if (!plan?.outline?.length) {
     throw new Error('Planner returned an empty outline');
   }
-  onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）`, streamBuffer: plannerRaw });
+  onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）`, streamLane: { key: 'planner', label: 'Planner', text: plannerRaw } });
 
   // ─── 2) Generator (batched for large outlines) ────────────────────────────
   // Strategy: split the Planner outline into batches of BATCH_SIZE modules.
@@ -333,7 +337,7 @@ export async function generateTeachingSite(
         signal,
         (partial) => {
           const f = fStart + Math.min(partial.length / batchEst, 1) * ((GEN_FRAC_END - GEN_FRAC_START) / totalGenBatches);
-          onProgress?.({ stage: 'generator', fraction: f, message: genMsg, streamBuffer: partial });
+          onProgress?.({ stage: 'generator', fraction: f, message: genMsg, streamLane: { key: `gen-${batchIdx}`, label: `G${batchIdx + 1}`, text: partial } });
         },
         8192,
       );
@@ -397,7 +401,7 @@ export async function generateTeachingSite(
         signal,
         (partial) => {
           const f = fStart + Math.min(partial.length / batchEst, 1) * ((1 - REV_FRAC_START) / totalRevBatches);
-          onProgress?.({ stage: 'reviewer', fraction: f, message: revMsg, streamBuffer: partial });
+          onProgress?.({ stage: 'reviewer', fraction: f, message: revMsg, streamLane: { key: `rev-${batchIdx}`, label: `R${batchIdx + 1}`, text: partial } });
         },
         8192,
       );
