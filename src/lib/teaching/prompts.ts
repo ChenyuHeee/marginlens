@@ -73,7 +73,23 @@ Rules:
   click-reveal one-by-one).
 - For "quiz" modules: use 3–4 options, only one correct.
 
-${COMMON_RULES}
+Slide overflow limits (STRICT — each module must fit one screen without scrolling):
+- keypoints / summary: MAX 7 items. If source has more, merge similar points or prioritise top 7.
+- section.content: MAX 300 words of Markdown. Split longer content across multiple section modules.
+- callout.body: MAX 120 words.
+- qa.answer: MAX 180 words. Summarise if longer.
+- definition.definition + definition.example together: MAX 150 words.
+- hero.summary: MAX 80 words.
+- Do NOT use deeply-nested Markdown lists; prefer flat bullet lists.
+
+Slide overflow limits (STRICT — each module must fit one screen without scrolling):
+- keypoints / summary: MAX 7 items. If source has more, merge similar points or prioritise top 7.
+- section.content: MAX 300 words of Markdown. Split longer content across multiple section modules.
+- callout.body: MAX 120 words.
+- qa.answer: MAX 180 words. Summarise if longer.
+- definition.definition + definition.example together: MAX 150 words.
+- hero.summary: MAX 80 words.
+- Do NOT use deeply-nested Markdown lists; prefer flat bullet lists.
 `.trim();
 
 export const REVIEWER_SYSTEM = `
@@ -96,6 +112,7 @@ Review checklist:
 - Fix LaTeX errors in "formula" modules (must render in KaTeX).
 - Ensure every "qa.source" actually appears in the note (paraphrase or remove if not).
 - Tighten verbose Markdown; collapse near-duplicates.
+- **Trim overflow**: if keypoints/summary has > 7 items, cut to 7. If section.content exceeds ~300 words, split or summarise. If any text field is excessively long, shorten it.
 - Keep the "hero" first and (if present) "summary" last.
 - Keep ids stable.
 

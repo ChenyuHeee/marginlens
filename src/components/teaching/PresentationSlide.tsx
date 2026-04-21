@@ -4,7 +4,7 @@
  * step-by-step as the user clicks.  getSteps() tells the controller how
  * many clicks are needed before advancing to the next module.
  */
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -20,7 +20,72 @@ import type {
   QAModule, QuizModule, SummaryModule,
 } from '@/lib/teaching/templates';
 
-// ── Accent palette (dark-background optimised) ───────────────────────────────
+// ── Overflow-safe scroll wrapper ──────────────────────────────────────────────
+/**
+ * Wraps slide content so it can scroll vertically when content overflows the
+ * viewport. Detects overflow via ResizeObserver and shows a bottom fade-out
+ * gradient with a hint label. The header (≈54px) + progress bar (2px) +
+ * footer (≈56px) + vertical padding (2×5vh ≈ 96px on 1080p) ≈ 210px.
+ */
+const MAX_SLIDE_H = 'calc(100vh - 220px)';
+
+function SlideScroller({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  const [atBottom, setAtBottom] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      const scrollable = el.scrollHeight > el.clientHeight + 4;
+      setOverflows(scrollable);
+      setAtBottom(scrollable && el.scrollTop + el.clientHeight >= el.scrollHeight - 8);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    el.addEventListener('scroll', check, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
+  }, []);
+
+  return (
+    <div style={{ position: 'relative', maxHeight: MAX_SLIDE_H, width: '100%', display: 'flex' }}>
+      <div
+        ref={ref}
+        style={{
+          flex: 1,
+          maxHeight: MAX_SLIDE_H,
+          overflowY: 'auto',
+          paddingRight: 6,
+          /* subtle dark scrollbar */
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgba(255,255,255,0.08) transparent',
+        }}
+      >
+        {children}
+      </div>
+      {/* Bottom fade + scroll hint */}
+      {overflows && !atBottom && (
+        <div
+          style={{
+            position: 'absolute', bottom: 0, left: 0, right: 6,
+            height: 72, pointerEvents: 'none',
+            background: 'linear-gradient(to bottom, transparent, #08080f)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            paddingBottom: 6,
+          }}
+        >
+          <span style={{ fontSize: 11, color: '#3a3a6a', letterSpacing: '0.06em' }}>
+            ↓ 向下滚动
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 const AC: Record<ModuleAccent, string> = {
   blue:   '#5b9cf8',
   purple: '#b06af4',
@@ -80,7 +145,8 @@ function Label({ children, color }: { children: React.ReactNode; color: string }
 function HeroSlide({ m }: { m: HeroModule }) {
   const color = ac(m.accent);
   return (
-    <div style={{ textAlign: 'center', maxWidth: 900, padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ textAlign: 'center', maxWidth: 900, padding: '0 20px' }}>
       {m.chips?.length ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 36 }}>
           {m.chips.map((c, i) => (
@@ -109,7 +175,8 @@ function HeroSlide({ m }: { m: HeroModule }) {
           <MD>{m.summary}</MD>
         </div>
       )}
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -117,7 +184,8 @@ function HeroSlide({ m }: { m: HeroModule }) {
 function SectionSlide({ m }: { m: SectionModule }) {
   const color = ac(m.accent);
   return (
-    <div style={{ maxWidth: 900, width: '100%', padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 900, width: '100%', padding: '0 20px' }}>
       <div style={{ width: 52, height: 4, borderRadius: 2, background: color, marginBottom: 32 }} />
       <h2 style={{
         fontSize: 'clamp(2rem, 5vw, 3.8rem)', fontWeight: 750, letterSpacing: '-0.03em',
@@ -128,7 +196,8 @@ function SectionSlide({ m }: { m: SectionModule }) {
       <div style={{ maxWidth: 720, fontSize: '1.2rem', color: '#b8b8d4', lineHeight: 1.85 }}>
         <MD large>{m.content}</MD>
       </div>
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -137,7 +206,8 @@ function KeyPointsSlide({ m, step }: { m: KeyPointsModule; step: number }) {
   const color = ac(m.accent);
   const allAtOnce = m.reveal === 'all';
   return (
-    <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}>{m.title || '要点'}</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {m.items.map((item, i) => (
@@ -154,7 +224,8 @@ function KeyPointsSlide({ m, step }: { m: KeyPointsModule; step: number }) {
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -162,7 +233,8 @@ function KeyPointsSlide({ m, step }: { m: KeyPointsModule; step: number }) {
 function DefinitionSlide({ m, step }: { m: DefinitionModule; step: number }) {
   const color = ac(m.accent ?? 'purple');
   return (
-    <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}><BookOpen size={14} />定义</Label>
       <div style={{
         fontSize: 'clamp(2rem, 5vw, 3.6rem)', fontWeight: 800,
@@ -185,7 +257,8 @@ function DefinitionSlide({ m, step }: { m: DefinitionModule; step: number }) {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -193,7 +266,8 @@ function DefinitionSlide({ m, step }: { m: DefinitionModule; step: number }) {
 function FormulaSlide({ m, step }: { m: FormulaModule; step: number }) {
   const color = ac(m.accent ?? 'blue');
   return (
-    <div style={{ maxWidth: 860, width: '100%', padding: '0 20px', textAlign: 'center' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 860, width: '100%', padding: '0 20px', textAlign: 'center' }}>
       <Label color={color} ><Sigma size={14} />{m.caption || '公式'}</Label>
       <div style={{
         fontSize: '2rem', padding: '44px 32px',
@@ -210,7 +284,8 @@ function FormulaSlide({ m, step }: { m: FormulaModule; step: number }) {
           <MD>{m.explanation}</MD>
         </div>
       )}
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -228,10 +303,11 @@ function CalloutSlide({ m }: { m: CalloutModule }) {
   const color = ac(m.accent ?? cfg.accent);
   const { Icon } = cfg;
   return (
-    <div style={{
-      maxWidth: 820, padding: '52px 60px', borderRadius: 24,
-      background: `${color}0f`, border: `1.5px solid ${color}35`,
-    }}>
+    <SlideScroller>
+      <div style={{
+        maxWidth: 820, padding: '52px 60px', borderRadius: 24,
+        background: `${color}0f`, border: `1.5px solid ${color}35`,
+      }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
         <Icon size={30} style={{ color }} />
         <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color }}>
@@ -241,7 +317,8 @@ function CalloutSlide({ m }: { m: CalloutModule }) {
       <div style={{ fontSize: '1.3rem', color: '#d8d8ef', lineHeight: 1.85 }}>
         <MD large>{m.body}</MD>
       </div>
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -250,7 +327,8 @@ function QASlide({ m, step }: { m: QAModule; step: number }) {
   const color = ac(m.accent ?? 'purple');
   const revealed = step >= 1;
   return (
-    <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}><HelpCircle size={14} />疑问与解答</Label>
       {m.source && (
         <div style={{
@@ -280,7 +358,8 @@ function QASlide({ m, step }: { m: QAModule; step: number }) {
           <MD large>{m.answer}</MD>
         </div>
       )}
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -289,7 +368,8 @@ function QuizSlide({ m, onAdvance }: { m: QuizModule; onAdvance?: () => void }) 
   const [picked, setPicked] = useState<number | null>(null);
   const color = ac(m.accent ?? 'green');
   return (
-    <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}><Sparkles size={14} />小测验</Label>
       <div style={{
         fontSize: 'clamp(1.2rem, 3vw, 2rem)', fontWeight: 650,
@@ -351,7 +431,8 @@ function QuizSlide({ m, onAdvance }: { m: QuizModule; onAdvance?: () => void }) 
           </button>
         </div>
       )}
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
@@ -360,7 +441,8 @@ function SummarySlide({ m, step }: { m: SummaryModule; step: number }) {
   const color = ac(m.accent ?? 'amber');
   const allAtOnce = m.reveal === 'all';
   return (
-    <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
+    <SlideScroller>
+      <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}>{m.title || '关键回顾'}</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
         {m.points.map((pt, i) => (
@@ -377,7 +459,8 @@ function SummarySlide({ m, step }: { m: SummaryModule; step: number }) {
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </SlideScroller>
   );
 }
 
