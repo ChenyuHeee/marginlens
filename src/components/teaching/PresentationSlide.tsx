@@ -31,6 +31,7 @@ const MAX_SLIDE_H = 'calc(100vh - 220px)';
 
 function SlideScroller({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [atBottom, setAtBottom] = useState(false);
 
@@ -38,13 +39,17 @@ function SlideScroller({ children }: { children: React.ReactNode }) {
     const el = ref.current;
     if (!el) return;
     const check = () => {
-      const scrollable = el.scrollHeight > el.clientHeight + 4;
+      // Use a generous threshold to avoid false positives from sub-pixel rounding
+      const scrollable = el.scrollHeight > el.clientHeight + 12;
       setOverflows(scrollable);
-      setAtBottom(scrollable && el.scrollTop + el.clientHeight >= el.scrollHeight - 8);
+      setAtBottom(scrollable && el.scrollTop + el.clientHeight >= el.scrollHeight - 12);
     };
     check();
+    // Watch both the scroll container AND its inner content so that late-rendering
+    // children (KaTeX, images, custom fonts) trigger a re-check once laid out.
     const ro = new ResizeObserver(check);
     ro.observe(el);
+    if (innerRef.current) ro.observe(innerRef.current);
     el.addEventListener('scroll', check, { passive: true });
     return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
   }, []);
@@ -63,9 +68,9 @@ function SlideScroller({ children }: { children: React.ReactNode }) {
           scrollbarColor: 'rgba(255,255,255,0.08) transparent',
         }}
       >
-        {children}
+        <div ref={innerRef}>{children}</div>
       </div>
-      {/* Bottom fade + scroll hint */}
+      {/* Bottom fade + scroll hint — only when truly overflowing and not yet at bottom */}
       {overflows && !atBottom && (
         <div
           style={{
