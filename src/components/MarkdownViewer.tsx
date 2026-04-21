@@ -93,16 +93,17 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
 
       const range = sel.getRangeAt(0);
       const rawText = sel.toString();
-      const text = rawText.trim();
-      if (!text || !containerRef.current?.contains(range.commonAncestorContainer)) return;
+      if (!rawText.trim() || !containerRef.current?.contains(range.commonAncestorContainer)) return;
 
       const rect = range.getBoundingClientRect();
 
-      const offsetInfo = getRangeOffsets(containerRef.current, range, '.inline-annotation, .annotation-portal');
+      const offsetInfo = getRangeOffsets(containerRef.current, range, '.inline-annotation, .annotation-portal, .katex');
       const leadingTrim = rawText.length - rawText.trimStart().length;
       const trailingTrim = rawText.length - rawText.trimEnd().length;
       const selStart = offsetInfo.start + leadingTrim;
       const selEnd = Math.max(selStart, offsetInfo.end - trailingTrim);
+      const text = offsetInfo.fullText.slice(selStart, selEnd).trim();
+      if (!text) return;
       const contextBefore = selStart > 0
         ? offsetInfo.fullText.slice(Math.max(0, selStart - 200), selStart)
         : '';
@@ -396,8 +397,9 @@ function highlightText(
   let node: Node | null;
   while ((node = walker.nextNode())) {
     // Skip text nodes inside inline-annotation blocks or annotation portals
-    // (matches the same skip logic as getRangeOffsets, so offsets stay in sync)
-    if ((node as Node).parentElement?.closest('.inline-annotation, .annotation-portal')) continue;
+    // and KaTeX subtree (MathML/HTML dual trees introduce offset drift).
+    // Matches getRangeOffsets skip logic so offsets stay in sync.
+    if ((node as Node).parentElement?.closest('.inline-annotation, .annotation-portal, .katex')) continue;
     textNodes.push(node as Text);
   }
 
