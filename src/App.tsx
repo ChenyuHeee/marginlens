@@ -9,6 +9,7 @@ import { ApiKeyAlert } from '@/components/ApiKeyAlert';
 import { ResizableHandle } from '@/components/ResizableHandle';
 import { ShareView } from '@/components/ShareView';
 import { TeachingView } from '@/components/TeachingView';
+import { TeachingShareView } from '@/components/TeachingShareView';
 import { UsernameSetupDialog } from '@/components/UsernameSetupDialog';
 import { getMyProfile } from '@/lib/profiles';
 import { useDocumentStore, useAnnotationStore, useChatStore, useSettingsStore, useGitHubSyncStore, useAuthStore, useUIStore, useWorkspaceStore } from '@/stores';
@@ -103,6 +104,12 @@ export default function App() {
   const shareToken = new URLSearchParams(window.location.search).get('share');
   if (shareToken) {
     return <ShareView token={shareToken} />;
+  }
+
+  // Handle ?teach-share= URL param — render TeachingShareView standalone
+  const teachShareToken = new URLSearchParams(window.location.search).get('teach-share');
+  if (teachShareToken) {
+    return <TeachingShareView token={teachShareToken} />;
   }
 
   if (teachDocId) {

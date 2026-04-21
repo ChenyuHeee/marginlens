@@ -451,3 +451,28 @@ body {
 .modal-backdrop {
   animation: backdropIn 0.15s ease;
 }
+
+/* ── Teaching presentation ─────────────────────────────────────────────────── */
+@keyframes tp-enter {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Dark-background markdown for presentation slides */
+.teach-md { color: inherit; }
+.teach-md p, .teach-md li, .teach-md td, .teach-md th { color: inherit; }
+.teach-md h1, .teach-md h2, .teach-md h3, .teach-md h4 { color: #f0f0f8; margin-top: 0.8em; margin-bottom: 0.5em; }
+.teach-md a { color: #7090ff; }
+.teach-md strong { color: inherit; }
+.teach-md em { color: inherit; }
+.teach-md code { background: rgba(255,255,255,0.10); color: #e0a0d8; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.87em; }
+.teach-md pre { background: rgba(0,0,0,0.50); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 0.9em 1.1em; }
+.teach-md pre code { background: none; padding: 0; color: #e0e0f0; }
+.teach-md blockquote { border-left: 3px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.04); color: inherit; margin: 0; padding: 0.6em 1em; border-radius: 0 8px 8px 0; }
+.teach-md blockquote p { margin: 0; }
+.teach-md table { border-collapse: collapse; width: 100%; }
+.teach-md th, .teach-md td { border: 1px solid rgba(255,255,255,0.14); padding: 0.4em 0.8em; }
+.teach-md th { background: rgba(255,255,255,0.06); font-weight: 600; }
+.teach-md ul, .teach-md ol { padding-left: 1.4em; }
+.teach-md li { margin-bottom: 0.25em; }
+.teach-md p { margin-top: 0; margin-bottom: 0.6em; }
