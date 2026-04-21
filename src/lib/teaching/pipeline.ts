@@ -24,12 +24,17 @@ async function chatComplete(
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
   signal?: AbortSignal,
   onChunk?: (partial: string) => void,
+  /** Override max_tokens for this call (useful for Generator/Reviewer which need more output budget). */
+  maxTokensOverride?: number,
 ): Promise<string> {
+  const effectiveProvider = maxTokensOverride
+    ? { ...provider, maxTokens: Math.max(provider.maxTokens, maxTokensOverride) }
+    : provider;
   return new Promise((resolve, reject) => {
     let buffer = '';
     const today = new Date().toISOString().slice(0, 10);
     streamChat(
-      provider,
+      effectiveProvider,
       messages,
       {
         onToken: (t) => {
@@ -39,7 +44,7 @@ async function chatComplete(
         onDone: () => resolve(buffer),
         onError: (e) => reject(e),
         onUsage: ({ promptTokens, completionTokens }) => {
-          recordApiUsage(today, provider.id, provider.name, provider.model, promptTokens, completionTokens)
+          recordApiUsage(today, effectiveProvider.id, effectiveProvider.name, effectiveProvider.model, promptTokens, completionTokens)
             .catch(() => { /* non-fatal */ });
         },
       },
@@ -268,7 +273,13 @@ export async function generateTeachingSite(
   onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）`, streamBuffer: plannerRaw });
 
   // ─── 2) Generator (with retry) ────────────────────────────────
-  const genUserMsg = `Source material (JSON):\n${sourceStr}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}`;
+  // Truncate source note for Generator: Planner outline already captures structure,
+  // so we only need enough note context for per-module content writing.
+  const GEN_NOTE_MAX = 8_000;
+  const generatorSource = source.note.length > GEN_NOTE_MAX
+    ? { ...source, note: source.note.slice(0, GEN_NOTE_MAX) + '\n\n…（笔记原文已截断，请以 Planner 大纲为准生成内容）' }
+    : source;
+  const genUserMsg = `Source material (JSON):\n${JSON.stringify(generatorSource, null, 2)}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}`;
   type GenMsg = { role: 'system' | 'user' | 'assistant'; content: string };
 
   let generatedModules: TeachingModule[] | null = null;
@@ -296,7 +307,7 @@ export async function generateTeachingSite(
     const raw = await chatComplete(provider, messages, signal, (partial) => {
       const frac = genBase + Math.min(partial.length / GEN_EST, 1) * 0.22;
       onProgress?.({ stage: 'generator', fraction: frac, message: genMsg, streamBuffer: partial });
-    });
+    }, 8192);
 
     try {
       const parsed = extractJson<{ modules: unknown[] }>(raw);
@@ -336,7 +347,7 @@ export async function generateTeachingSite(
         { role: 'system', content: REVIEWER_SYSTEM },
         {
           role: 'user',
-          content: `Source material (JSON):\n${sourceStr}\n\nGenerated modules:\n${JSON.stringify({ modules: generatedModules }, null, 2)}`,
+          content: `Source material (JSON):\n${JSON.stringify(generatorSource, null, 2)}\n\nGenerated modules:\n${JSON.stringify({ modules: generatedModules }, null, 2)}`,
         },
       ],
       signal,
@@ -344,6 +355,7 @@ export async function generateTeachingSite(
         const frac = 0.72 + Math.min(partial.length / REV_EST, 1) * 0.25;
         onProgress?.({ stage: 'reviewer', fraction: frac, message: '审校事实与一致性…', streamBuffer: partial });
       },
+      8192,
     );
     const reviewed = extractJson<{ modules?: unknown[]; notes?: string[] }>(reviewerRaw);
     if (Array.isArray(reviewed?.modules) && reviewed.modules.length > 0) {
