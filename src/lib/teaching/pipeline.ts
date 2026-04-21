@@ -1,5 +1,6 @@
 import type { Annotation, Document, LLMProvider } from '@/types';
 import { streamChat } from '@/lib/llm';
+import { recordApiUsage } from '@/lib/db';
 import { PLANNER_SYSTEM, GENERATOR_SYSTEM, REVIEWER_SYSTEM } from './prompts';
 import type { TeachingModule, TeachingSite } from './templates';
 
@@ -23,6 +24,7 @@ async function chatComplete(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let buffer = '';
+    const today = new Date().toISOString().slice(0, 10);
     streamChat(
       provider,
       messages,
@@ -30,6 +32,10 @@ async function chatComplete(
         onToken: (t) => { buffer += t; },
         onDone: () => resolve(buffer),
         onError: (e) => reject(e),
+        onUsage: ({ promptTokens, completionTokens }) => {
+          recordApiUsage(today, provider.id, provider.name, provider.model, promptTokens, completionTokens)
+            .catch(() => { /* non-fatal */ });
+        },
       },
       signal,
     );
