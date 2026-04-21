@@ -150,7 +150,27 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
     try {
       const token = await createTeachingShare(site);
       const url = buildTeachingShareUrl(token);
-      await navigator.clipboard.writeText(url);
+      // navigator.clipboard requires a secure user-gesture context which may be
+      // lost after an async call. Fall back to the execCommand approach which
+      // works reliably in all browsers/contexts.
+      let copied = false;
+      if (navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(url);
+          copied = true;
+        } catch {
+          // fallthrough to execCommand
+        }
+      }
+      if (!copied) {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 3000);
     } catch (err) {
