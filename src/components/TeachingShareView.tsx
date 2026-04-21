@@ -171,7 +171,7 @@ export function TeachingShareView({ token }: TeachingShareViewProps) {
             animation: 'tp-enter 0.5s cubic-bezier(.16,1,.3,1) both',
           }}
         >
-          <PresentationSlide module={curModule} step={stepIdx} />
+          <PresentationSlide module={curModule} step={stepIdx} onAdvance={goNext} />
         </div>
       ) : null}
 

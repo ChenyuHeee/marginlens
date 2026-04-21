@@ -68,6 +68,9 @@ Rules:
   the answer. If the answer is short, set reveal=true.
 - For "formula" modules: latex must be pure LaTeX without $...$ delimiters,
   and "explanation" should describe meaning of every variable.
+- For "keypoints" / "summary" modules: set reveal="all" only when the list has
+  ≤ 3 short items that are best understood together. Otherwise omit (defaults to
+  click-reveal one-by-one).
 - For "quiz" modules: use 3–4 options, only one correct.
 
 ${COMMON_RULES}

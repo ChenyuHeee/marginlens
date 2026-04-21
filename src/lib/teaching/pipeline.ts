@@ -66,6 +66,88 @@ function extractJson<T = unknown>(raw: string): T {
   throw new Error('LLM output JSON is unterminated');
 }
 
+// ── Runtime schema validation ─────────────────────────────────────────────────
+
+const VALID_ACCENTS = new Set(['blue', 'purple', 'green', 'amber', 'rose', 'gray']);
+const VALID_CALLOUT_VARIANTS = new Set(['note', 'tip', 'warning', 'question', 'insight']);
+
+function str(v: unknown): v is string { return typeof v === 'string' && v.trim().length > 0; }
+function arr(v: unknown): v is unknown[] { return Array.isArray(v) && v.length > 0; }
+
+/** Validate one module; returns a (possibly lightly-patched) valid module or null. */
+function validateModule(m: unknown): TeachingModule | null {
+  if (!m || typeof m !== 'object') return null;
+  const o = m as Record<string, unknown>;
+
+  // Normalise accent / unknowns — don't reject, just discard bad values
+  if (o.accent !== undefined && !VALID_ACCENTS.has(o.accent as string)) delete o.accent;
+
+  switch (o.type) {
+    case 'hero':
+      if (!str(o.title)) return null;
+      return o as unknown as TeachingModule;
+
+    case 'section':
+      if (!str(o.title) || !str(o.content)) return null;
+      return o as unknown as TeachingModule;
+
+    case 'keypoints':
+      if (!arr(o.items) || !(o.items as unknown[]).every(s => typeof s === 'string')) return null;
+      if (o.reveal !== 'one-by-one' && o.reveal !== 'all') delete o.reveal;
+      return o as unknown as TeachingModule;
+
+    case 'definition':
+      if (!str(o.term) || !str(o.definition)) return null;
+      return o as unknown as TeachingModule;
+
+    case 'formula':
+      if (!str(o.latex)) return null;
+      return o as unknown as TeachingModule;
+
+    case 'callout':
+      if (!str(o.body)) return null;
+      if (!VALID_CALLOUT_VARIANTS.has(o.variant as string)) o.variant = 'note';
+      return o as unknown as TeachingModule;
+
+    case 'qa':
+      if (!str(o.question) || !str(o.answer)) return null;
+      return o as unknown as TeachingModule;
+
+    case 'quiz': {
+      if (!str(o.question) || !arr(o.options) || (o.options as unknown[]).length < 2) return null;
+      if (typeof o.correctIndex !== 'number') return null;
+      // Clamp correctIndex into valid range
+      o.correctIndex = Math.max(0, Math.min(o.correctIndex as number, (o.options as unknown[]).length - 1));
+      return o as unknown as TeachingModule;
+    }
+
+    case 'summary':
+      if (!arr(o.points) || !(o.points as unknown[]).every(s => typeof s === 'string')) return null;
+      if (o.reveal !== 'one-by-one' && o.reveal !== 'all') delete o.reveal;
+      return o as unknown as TeachingModule;
+
+    default:
+      return null; // Unknown type — discard
+  }
+}
+
+/** Sanitize an array of raw LLM-produced module objects. */
+function sanitizeModules(raw: unknown[]): TeachingModule[] {
+  return raw.map(validateModule).filter(Boolean) as TeachingModule[];
+}
+
+/** Describe validation issues for the retry feedback message. */
+function describeModuleIssues(raw: unknown[]): string {
+  const issues: string[] = [];
+  (raw ?? []).forEach((m, i) => {
+    if (!m || typeof m !== 'object') { issues.push(`Item ${i}: not an object`); return; }
+    const o = m as Record<string, unknown>;
+    if (!o.type) { issues.push(`Item ${i}: missing "type"`); return; }
+    if (validateModule(m) === null) issues.push(`Item ${i} (type="${o.type}"): missing required fields`);
+  });
+  return issues.slice(0, 8).join('; ') || 'unknown validation error';
+}
+
 function buildSourcePayload(doc: Document, annotations: Annotation[]) {
   const annLines = annotations.map((a, i) => ({
     id: a.id || `ann-${i + 1}`,
@@ -124,25 +206,65 @@ export async function generateTeachingSite(
   }
   onProgress?.({ stage: 'planner', fraction: 0.33, message: `编排完成（${plan.outline.length} 个模块）` });
 
-  // ─── 2) Generator ─────────────────────────────────────────────
-  onProgress?.({ stage: 'generator', fraction: 0.4, message: '生成模块内容…' });
-  const generatorRaw = await chatComplete(
-    provider,
-    [
-      { role: 'system', content: GENERATOR_SYSTEM },
-      { role: 'user', content: `Source material (JSON):\n${sourceStr}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}` },
-    ],
-    signal,
-  );
-  const generated = extractJson<{ modules: TeachingModule[] }>(generatorRaw);
-  if (!generated?.modules?.length) {
-    throw new Error('Generator returned no modules');
+  // ─── 2) Generator (with retry) ────────────────────────────────
+  const genUserMsg = `Source material (JSON):\n${sourceStr}\n\nPlanner outline:\n${JSON.stringify(plan, null, 2)}`;
+  type GenMsg = { role: 'system' | 'user' | 'assistant'; content: string };
+  const baseGenMessages: GenMsg[] = [
+    { role: 'system', content: GENERATOR_SYSTEM },
+    { role: 'user', content: genUserMsg },
+  ];
+
+  let generatedModules: TeachingModule[] | null = null;
+  let lastGenRaw = '';
+  let lastGenError = '';
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const messages: GenMsg[] = attempt === 1
+      ? baseGenMessages
+      : [
+          ...baseGenMessages,
+          { role: 'assistant', content: lastGenRaw },
+          {
+            role: 'user',
+            content: `Your previous output had these issues: ${lastGenError}.\n` +
+              `Please fix them and output ONLY the corrected JSON object with a "modules" array.`,
+          },
+        ];
+
+    onProgress?.({
+      stage: 'generator',
+      fraction: 0.38 + (attempt - 1) * 0.08,
+      message: attempt === 1 ? '生成模块内容…' : `重试生成（第 ${attempt} 次）…`,
+    });
+
+    lastGenRaw = await chatComplete(provider, messages, signal);
+
+    try {
+      const parsed = extractJson<{ modules: unknown[] }>(lastGenRaw);
+      const rawArr: unknown[] = Array.isArray(parsed?.modules) ? parsed.modules : [];
+      const valid = sanitizeModules(rawArr);
+
+      if (valid.length < 2) {
+        lastGenError = `Only ${valid.length} module(s) passed validation out of ${rawArr.length}. ` +
+          describeModuleIssues(rawArr);
+        continue;
+      }
+
+      generatedModules = valid;
+      break;
+    } catch (e) {
+      lastGenError = (e as Error).message;
+    }
   }
-  onProgress?.({ stage: 'generator', fraction: 0.7, message: `已生成 ${generated.modules.length} 个模块` });
+
+  if (!generatedModules) {
+    throw new Error(`内容生成失败（已重试 3 次）：${lastGenError}`);
+  }
+  onProgress?.({ stage: 'generator', fraction: 0.7, message: `已生成 ${generatedModules.length} 个模块` });
 
   // ─── 3) Reviewer ──────────────────────────────────────────────
   onProgress?.({ stage: 'reviewer', fraction: 0.78, message: '审校事实与一致性…' });
-  let finalModules = generated.modules;
+  let finalModules = generatedModules;
   let reviewerNotes: string[] | undefined;
   try {
     const reviewerRaw = await chatComplete(
@@ -151,16 +273,23 @@ export async function generateTeachingSite(
         { role: 'system', content: REVIEWER_SYSTEM },
         {
           role: 'user',
-          content: `Source material (JSON):\n${sourceStr}\n\nGenerated modules:\n${JSON.stringify(generated, null, 2)}`,
+          content: `Source material (JSON):\n${sourceStr}\n\nGenerated modules:\n${JSON.stringify({ modules: generatedModules }, null, 2)}`,
         },
       ],
       signal,
     );
-    const reviewed = extractJson<{ modules?: TeachingModule[]; notes?: string[] }>(reviewerRaw);
+    const reviewed = extractJson<{ modules?: unknown[]; notes?: string[] }>(reviewerRaw);
     if (Array.isArray(reviewed?.modules) && reviewed.modules.length > 0) {
-      finalModules = reviewed.modules;
+      const sanitized = sanitizeModules(reviewed.modules);
+      // Only accept the reviewer's output if it preserved most of the modules;
+      // if it somehow discarded too many, fall back to generator output.
+      if (sanitized.length >= Math.ceil(generatedModules.length * 0.6)) {
+        finalModules = sanitized;
+      } else {
+        reviewerNotes = ['审校输出模块数量过少，已保留生成阶段结果'];
+      }
     }
-    reviewerNotes = reviewed?.notes;
+    if (Array.isArray(reviewed?.notes)) reviewerNotes = reviewed.notes;
   } catch (err) {
     // Reviewer failure is non-fatal; fall back to generator output.
     reviewerNotes = [`审校阶段失败，已使用生成结果：${(err as Error).message}`];

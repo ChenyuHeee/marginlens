@@ -11,7 +11,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import {
   Check, X, HelpCircle, BookOpen, Lightbulb,
-  AlertTriangle, Sparkles, Sigma, ChevronDown,
+  AlertTriangle, Sparkles, Sigma, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import type {
   TeachingModule, ModuleAccent,
@@ -34,8 +34,8 @@ function ac(a?: ModuleAccent) { return AC[a ?? 'blue']; }
 // ── How many click-steps does this module need? ───────────────────────────────
 export function getSteps(m: TeachingModule): number {
   switch (m.type) {
-    case 'keypoints': return Math.max(1, m.items.length);
-    case 'summary':   return Math.max(1, m.points.length);
+    case 'keypoints': return m.reveal === 'all' ? 1 : Math.max(1, m.items.length);
+    case 'summary':   return m.reveal === 'all' ? 1 : Math.max(1, m.points.length);
     case 'qa':        return 2;
     case 'definition': return m.example ? 2 : 1;
     case 'formula':    return m.explanation ? 2 : 1;
@@ -135,12 +135,13 @@ function SectionSlide({ m }: { m: SectionModule }) {
 // ── KEYPOINTS ────────────────────────────────────────────────────────────────
 function KeyPointsSlide({ m, step }: { m: KeyPointsModule; step: number }) {
   const color = ac(m.accent);
+  const allAtOnce = m.reveal === 'all';
   return (
     <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}>{m.title || '要点'}</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {m.items.map((item, i) => (
-          <div key={i} style={{ display: 'flex', gap: 18, alignItems: 'flex-start', ...rv(i <= step) }}>
+          <div key={i} style={{ display: 'flex', gap: 18, alignItems: 'flex-start', ...rv(allAtOnce || i <= step) }}>
             <div style={{
               flexShrink: 0, width: 30, height: 30, borderRadius: '50%',
               background: `${color}1a`, border: `1.5px solid ${color}50`,
@@ -284,7 +285,7 @@ function QASlide({ m, step }: { m: QAModule; step: number }) {
 }
 
 // ── QUIZ ─────────────────────────────────────────────────────────────────────
-function QuizSlide({ m }: { m: QuizModule }) {
+function QuizSlide({ m, onAdvance }: { m: QuizModule; onAdvance?: () => void }) {
   const [picked, setPicked] = useState<number | null>(null);
   const color = ac(m.accent ?? 'green');
   return (
@@ -333,6 +334,23 @@ function QuizSlide({ m }: { m: QuizModule }) {
           <MD>{m.explanation}</MD>
         </div>
       )}
+      {/* After answering, show a Continue button — the outer click area is blocked by stopPropagation */}
+      {picked !== null && onAdvance && (
+        <div style={{ marginTop: 32, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAdvance(); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(80,80,200,0.18)', border: '1px solid rgba(80,80,200,0.45)',
+              borderRadius: 10, padding: '10px 24px',
+              color: '#9090e0', fontSize: '1rem', cursor: 'pointer',
+              animation: 'tp-enter 0.35s cubic-bezier(.16,1,.3,1) both',
+            }}
+          >
+            继续 <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -340,12 +358,13 @@ function QuizSlide({ m }: { m: QuizModule }) {
 // ── SUMMARY ──────────────────────────────────────────────────────────────────
 function SummarySlide({ m, step }: { m: SummaryModule; step: number }) {
   const color = ac(m.accent ?? 'amber');
+  const allAtOnce = m.reveal === 'all';
   return (
     <div style={{ maxWidth: 860, width: '100%', padding: '0 20px' }}>
       <Label color={color}>{m.title || '关键回顾'}</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
         {m.points.map((pt, i) => (
-          <div key={i} style={{ display: 'flex', gap: 18, alignItems: 'flex-start', ...rv(i <= step) }}>
+          <div key={i} style={{ display: 'flex', gap: 18, alignItems: 'flex-start', ...rv(allAtOnce || i <= step) }}>
             <div style={{
               flexShrink: 0, width: 34, height: 34, borderRadius: '50%',
               background: `${color}1a`, border: `1.5px solid ${color}50`,
@@ -363,7 +382,13 @@ function SummarySlide({ m, step }: { m: SummaryModule; step: number }) {
 }
 
 // ── Dispatcher ───────────────────────────────────────────────────────────────
-export function PresentationSlide({ module: m, step }: { module: TeachingModule; step: number }) {
+export function PresentationSlide({
+  module: m, step, onAdvance,
+}: {
+  module: TeachingModule;
+  step: number;
+  onAdvance?: () => void;
+}) {
   switch (m.type) {
     case 'hero':       return <HeroSlide m={m} />;
     case 'section':    return <SectionSlide m={m} />;
@@ -372,7 +397,7 @@ export function PresentationSlide({ module: m, step }: { module: TeachingModule;
     case 'formula':    return <FormulaSlide m={m} step={step} />;
     case 'callout':    return <CalloutSlide m={m} />;
     case 'qa':         return <QASlide m={m} step={step} />;
-    case 'quiz':       return <QuizSlide m={m} />;
+    case 'quiz':       return <QuizSlide m={m} onAdvance={onAdvance} />;
     case 'summary':    return <SummarySlide m={m} step={step} />;
     default:           return null;
   }

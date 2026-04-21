@@ -42,6 +42,11 @@ export interface KeyPointsModule extends BaseModule {
   type: 'keypoints';
   title?: string;
   items: string[];
+  /**
+   * 'one-by-one' (default): reveal each item on click.
+   * 'all': show all items at once on first display.
+   */
+  reveal?: 'one-by-one' | 'all';
 }
 
 export interface DefinitionModule extends BaseModule {
@@ -94,6 +99,8 @@ export interface SummaryModule extends BaseModule {
   title?: string;
   /** Bullet-style takeaways */
   points: string[];
+  /** Same as KeyPointsModule.reveal */
+  reveal?: 'one-by-one' | 'all';
 }
 
 export type TeachingModule =
@@ -132,13 +139,13 @@ You can only emit objects with these "type" values, and only the listed fields:
 
 - hero        { type, title, subtitle?, summary?, chips? }
 - section     { type, title, level?: 1|2|3, content: <markdown> }
-- keypoints   { type, title?, items: string[] }
+- keypoints   { type, title?, items: string[], reveal?: "one-by-one"|"all" }  // reveal: "all" = show all at once, "one-by-one" = click-reveal each (default)
 - definition  { type, term, definition: <markdown>, example?: <markdown> }
 - formula     { type, latex: <pure LaTeX, no $ delimiters>, explanation?: <markdown>, caption? }
 - callout     { type, variant: "note"|"tip"|"warning"|"question"|"insight", title?, body: <markdown> }
 - qa          { type, question, answer: <markdown>, source?: <quote>, reveal?: boolean }
 - quiz        { type, question, options: string[], correctIndex: number, explanation?: <markdown> }
-- summary     { type, title?, points: string[] }
+- summary     { type, title?, points: string[], reveal?: "one-by-one"|"all" }
 
 Optional on every module: id (string), size ("sm"|"md"|"lg"|"full"), accent ("blue"|"purple"|"green"|"amber"|"rose"|"gray"), anchor (string).
 Markdown supports inline math \\( ... \\) and display math $$ ... $$.
