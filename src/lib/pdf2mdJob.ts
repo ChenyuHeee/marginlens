@@ -91,10 +91,14 @@ export async function createPdf2mdJob(doc: Document): Promise<string> {
     .insert({ id, document_id: doc.id, pdf_storage_path: pdfPath, status: 'pending' });
   if (insertErr) throw new Error(`任务创建失败: ${insertErr.message}`);
 
-  // Trigger workflow immediately (fire-and-forget; cron will retry on failure)
-  supabase.functions
-    .invoke('trigger-pdf2md-workflow')
-    .catch((e) => console.warn('[PDF2MD] workflow trigger failed:', e));
+  // Trigger workflow immediately (cron acts as fallback on failure)
+  try {
+    const { error: invokeErr } = await supabase.functions.invoke('trigger-pdf2md-workflow');
+    if (invokeErr) console.warn('[PDF2MD] workflow trigger failed:', invokeErr);
+    else console.log('[PDF2MD] workflow dispatch triggered successfully');
+  } catch (e) {
+    console.warn('[PDF2MD] workflow trigger exception (cron will retry):', e);
+  }
 
   return id;
 }

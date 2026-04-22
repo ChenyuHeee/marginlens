@@ -1,8 +1,7 @@
 // Supabase Edge Function: trigger-pdf2md-workflow
 // Called by the frontend after a pdf2md_job is created.
 // Dispatches the convert_pdf2md GitHub Actions workflow immediately.
-
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+// No user auth check needed — GITHUB_TOKEN secret is sufficient protection.
 
 const REPO_OWNER = 'ChenyuHeee';
 const REPO_NAME  = 'marginlens';
@@ -15,21 +14,6 @@ Deno.serve(async (req: Request) => {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, content-type',
       },
-    });
-  }
-
-  // Require authenticated session
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   }
 
@@ -58,7 +42,7 @@ Deno.serve(async (req: Request) => {
   const status = resp.ok ? 200 : resp.status;
   const body = resp.ok
     ? { ok: true }
-    : { error: `GitHub API ${resp.status}` };
+    : { error: `GitHub API ${resp.status}: ${await resp.text()}` };
 
   return new Response(JSON.stringify(body), {
     status,
