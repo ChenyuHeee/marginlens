@@ -46,18 +46,14 @@ def sb_update(table: str, eq: dict, data: dict) -> None:
 
 
 def sb_storage_download(bucket: str, path: str) -> bytes:
-    """Download a file from Supabase Storage (service-role signed URL)."""
-    r = requests.post(
-        f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}",
+    """Download a file from Supabase Storage using service-role key (no signed URL needed)."""
+    r = requests.get(
+        f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}",
         headers=HEADERS,
-        json={"expiresIn": 300},
-        timeout=30,
+        timeout=120,
     )
     r.raise_for_status()
-    signed_url = SUPABASE_URL + r.json()["signedURL"]
-    dl = requests.get(signed_url, timeout=120)
-    dl.raise_for_status()
-    return dl.content
+    return r.content
 
 
 def sb_storage_upload(bucket: str, path: str, data: bytes, content_type: str) -> str:
