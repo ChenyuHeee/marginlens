@@ -19,6 +19,7 @@ Run:
 
 import io, json, os, re, sys
 import requests
+from lxml import etree
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -57,6 +58,92 @@ FONT = 'Segoe UI'   # Embeds as font name; PowerPoint subs if unavailable
 
 def get_accent(m: dict) -> RGBColor:
     return ACCENT.get(m.get('accent', ''), ACCENT['blue'])
+
+
+# ── LaTeX preprocessing ─────────────────────────────────────────────────────
+def prep_latex(latex: str) -> str:
+    """Strip display-math delimiters so matplotlib mathtext can render inline."""
+    s = latex.strip()
+    for start, end in [
+        ('$$', '$$'), ('\\[', '\\]'),
+        ('\\begin{equation}', '\\end{equation}'),
+        ('\\begin{equation*}', '\\end{equation*}'),
+        ('\\begin{align}', '\\end{align}'),
+        ('\\begin{align*}', '\\end{align*}'),
+    ]:
+        if s.startswith(start) and s.endswith(end) and len(s) > len(start) + len(end):
+            s = s[len(start):-len(end)].strip()
+            break
+    if s.startswith('$') and s.endswith('$') and len(s) > 1:
+        s = s[1:-1].strip()
+    # Replace \align-like environments with simple spaces (mathtext unsupported)
+    s = re.sub(r'\\\\', '  ', s)  # \\ newline → space
+    s = re.sub(r'&', '', s)         # alignment tabs
+    return s
+
+
+# ── Click-reveal animations ───────────────────────────────────────────────────
+def add_appear_animations(slide, shape_id_groups: list) -> None:
+    """
+    Add sequential click-triggered 'Appear' entrance animations.
+    shape_id_groups: [[id1, id2], [id3], ...] — each inner list appears on one click.
+    Skip index 0: first group is visible immediately (no animation needed).
+    """
+    if not shape_id_groups:
+        return
+    P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+
+    def sub(parent, tag, **attr):
+        return etree.SubElement(parent, f'{{{P}}}{tag}',
+                                {k: v for k, v in attr.items()})
+
+    cid = [0]
+
+    def nid():
+        cid[0] += 1
+        return str(cid[0])
+
+    timing = etree.Element(f'{{{P}}}timing')
+    tn_lst    = sub(timing, 'tnLst')
+    par_root  = sub(tn_lst, 'par')
+    root_ctn  = sub(par_root, 'cTn', id=nid(), dur='indefinite',
+                    restart='whenNotActive', nodeType='tmRoot')
+    root_ch   = sub(root_ctn, 'childTnLst')
+    seq       = sub(root_ch, 'seq', concurrent='1', nextAc='seek')
+    main_ctn  = sub(seq, 'cTn', id=nid(), dur='indefinite', nodeType='mainSeq')
+    main_ch   = sub(main_ctn, 'childTnLst')
+
+    for grp_idx, shape_ids in enumerate(shape_id_groups):
+        click_par = sub(main_ch, 'par')
+        click_ctn = sub(click_par, 'cTn', id=nid(), fill='hold')
+        st_lst    = sub(click_ctn, 'stCondLst')
+        sub(st_lst, 'cond', evt='onBegin', delay='indefinite')
+        inner_ch  = sub(click_ctn, 'childTnLst')
+
+        for shape_id in shape_ids:
+            sp_par  = sub(inner_ch, 'par')
+            sp_ctn  = sub(sp_par, 'cTn', id=nid(),
+                          presetID='1', presetClass='entr', presetSubtype='0',
+                          fill='hold', grpId=str(grp_idx), nodeType='clickEffect')
+            sc_lst  = sub(sp_ctn, 'stCondLst')
+            sub(sc_lst, 'cond', delay='0')
+            anim_ch = sub(sp_ctn, 'childTnLst')
+            set_el  = sub(anim_ch, 'set')
+            cbhvr   = sub(set_el, 'cBhvr')
+            sub(cbhvr, 'cTn', id=nid(), dur='1', fill='hold')
+            tgt_el  = sub(cbhvr, 'tgtEl')
+            sub(tgt_el, 'spTgt', spid=str(shape_id))
+            attr_lst = sub(cbhvr, 'attrNameLst')
+            attr_name = etree.SubElement(attr_lst, f'{{{P}}}attrName')
+            attr_name.text = 'style.visibility'
+            to_el   = sub(set_el, 'to')
+            sub(to_el, 'strVal', val='visible')
+
+    prev_cl  = sub(seq, 'prevCondLst')
+    prev_c   = sub(prev_cl, 'cond', evt='onBegin', delay='0')
+    sub(prev_c, 'tn')
+    sub(timing, 'bldLst')
+    slide.element.append(timing)
 
 
 # ── Markdown → plain text (strip markers, keep content) ─────────────────────
@@ -206,9 +293,13 @@ def render_keypoints(prs: Presentation, m: dict) -> None:
     slide_title(slide, m.get('title') or '关键要点', color)
 
     items = m.get('items', [])
+    reveal = m.get('reveal', 'one-by-one')
+    animate = reveal == 'one-by-one' and len(items) > 1
+    anim_groups = []  # [[dot_id, text_id], ...] for items i >= 1
+
     for i, item in enumerate(items[:8]):
         y = 0.95 + i * 0.73
-        # Colored bullet dot
+        n_before = len(slide.shapes)
         dot = slide.shapes.add_shape(MSO_SHAPE.OVAL,
                                      Inches(1.2), Inches(y + 0.14),
                                      Inches(0.14), Inches(0.14))
@@ -216,6 +307,13 @@ def render_keypoints(prs: Presentation, m: dict) -> None:
         dot.fill.fore_color.rgb = color
         dot.line.fill.background()
         add_text(slide, 1.48, y, 11.5, 0.65, strip_md(item), 17, color=FG)
+        if animate and i > 0:
+            ids = [slide.shapes[j].shape_id
+                   for j in range(n_before, len(slide.shapes))]
+            anim_groups.append(ids)
+
+    if anim_groups:
+        add_appear_animations(slide, anim_groups)
 
 
 def render_definition(prs: Presentation, m: dict) -> None:
@@ -251,32 +349,38 @@ def render_formula(prs: Presentation, m: dict) -> None:
     if m.get('caption'):
         add_text(slide, 1.5, 0.3, 11.0, 0.6, m['caption'], 22, bold=True, color=FG)
 
-    latex = m.get('latex', '')
+    latex = prep_latex(m.get('latex', ''))
     img_inserted = False
 
     try:
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        mpl.rcParams['mathtext.fontset'] = 'cm'   # Computer Modern, closest to LaTeX
+        mpl.rcParams['mathtext.default'] = 'regular'
 
-        fig = plt.figure(figsize=(9, 2.5), facecolor='#0d0d1a')
-        ax = fig.add_axes([0, 0, 1, 1])
+        fig = plt.figure(figsize=(10, 2.8), facecolor='#0d0d1a')
+        ax = fig.add_axes([0.02, 0.05, 0.96, 0.90])
         ax.set_facecolor('#0d0d1a')
         ax.axis('off')
-        ax.text(0.5, 0.5, f'${latex}$', transform=ax.transAxes,
-                fontsize=30, ha='center', va='center', color='#f0f0f8')
+        # Wrap in $...$ for mathtext; use raw string to avoid escape issues
+        ax.text(0.5, 0.5, r'$' + latex + r'$', transform=ax.transAxes,
+                fontsize=34, ha='center', va='center', color='#f0f0f8',
+                usetex=False)  # mathtext only, no LaTeX installation needed
         buf = io.BytesIO()
         plt.savefig(buf, format='png', bbox_inches='tight',
-                    facecolor='#0d0d1a', edgecolor='none', dpi=150)
+                    facecolor='#0d0d1a', edgecolor='none', dpi=180)
         plt.close(fig)
         buf.seek(0)
-        slide.shapes.add_picture(buf, Inches(1.5), Inches(1.1), Inches(10.5), Inches(2.8))
+        slide.shapes.add_picture(buf, Inches(1.5), Inches(1.0), Inches(10.5), Inches(3.0))
         img_inserted = True
     except Exception as exc:
-        print(f'  latex render failed: {exc}', file=sys.stderr)
+        print(f'  latex render failed ({exc}), falling back to text', file=sys.stderr)
 
     if not img_inserted:
-        add_rect(slide, 1.5, 1.1, 10.5, 2.2, SURFACE2, color)
+        # Fallback: styled text box with the raw LaTeX
+        add_rect(slide, 1.5, 1.0, 10.5, 2.5, SURFACE2, color)
         add_text(slide, 1.7, 1.3, 10.1, 1.8, latex, 20,
                  color=color, align=PP_ALIGN.CENTER)
 
@@ -364,9 +468,13 @@ def render_summary(prs: Presentation, m: dict) -> None:
     slide_title(slide, m.get('title') or '总结', color)
 
     points = m.get('points', [])
+    reveal = m.get('reveal', 'one-by-one')
+    animate = reveal == 'one-by-one' and len(points) > 1
+    anim_groups = []
+
     for i, pt in enumerate(points[:7]):
         y = 0.95 + i * 0.75
-        # Numbered badge
+        n_before = len(slide.shapes)
         badge = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.2), Inches(y),
             Inches(0.34), Inches(0.34))
@@ -382,6 +490,13 @@ def render_summary(prs: Presentation, m: dict) -> None:
         p.font.name = FONT
         p.alignment = PP_ALIGN.CENTER
         add_text(slide, 1.68, y + 0.02, 11.5, 0.6, strip_md(pt), 17, color=FG)
+        if animate and i > 0:
+            ids = [slide.shapes[j].shape_id
+                   for j in range(n_before, len(slide.shapes))]
+            anim_groups.append(ids)
+
+    if anim_groups:
+        add_appear_animations(slide, anim_groups)
 
 
 MODULE_RENDERERS = {
