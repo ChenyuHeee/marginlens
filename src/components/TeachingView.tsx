@@ -148,28 +148,39 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
     setShareError(null);
     setShareLoading(true);
     try {
-      const token = await createTeachingShare(site);
-      const url = buildTeachingShareUrl(token);
-      // navigator.clipboard requires a secure user-gesture context which may be
-      // lost after an async call. Fall back to the execCommand approach which
-      // works reliably in all browsers/contexts.
-      let copied = false;
-      if (navigator.clipboard) {
+      // The user-gesture context is lost after any `await`, so both
+      // navigator.clipboard.writeText() and execCommand('copy') fail when
+      // called after an async operation.
+      //
+      // Solution: ClipboardItem with an async Blob — we call clipboard.write()
+      // SYNCHRONOUSLY within the gesture, but supply the actual content via a
+      // Promise<Blob>. The browser preserves the permission because the write
+      // was initiated in the gesture frame.
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        const blobPromise = createTeachingShare(site).then(
+          (token) => new Blob([buildTeachingShareUrl(token)], { type: 'text/plain' }),
+        );
+        // This call is synchronous — user gesture context preserved ✓
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blobPromise })]);
+      } else {
+        // Older browsers: generate first, then try writeText (may fail on http)
+        const token = await createTeachingShare(site);
+        const url = buildTeachingShareUrl(token);
+        let copied = false;
         try {
           await navigator.clipboard.writeText(url);
           copied = true;
-        } catch {
-          // fallthrough to execCommand
+        } catch { /* fall through */ }
+        if (!copied) {
+          const ta = document.createElement('textarea');
+          ta.value = url;
+          ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (!ok) throw new Error('复制到剪贴板失败，请手动复制链接');
         }
-      }
-      if (!copied) {
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
       }
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 3000);
