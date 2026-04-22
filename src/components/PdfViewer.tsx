@@ -103,7 +103,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
     const loadPdf = async () => {
       try {
-        const data = new Uint8Array(doc.pdfData!);
+        // slice(0) copies the ArrayBuffer so pdfjs transfer doesn't detach doc.pdfData
+        const data = new Uint8Array(doc.pdfData!.slice(0));
         const pdf = await pdfjsLib.getDocument({ data }).promise;
         if (cancelled) {
           pdf.destroy();
