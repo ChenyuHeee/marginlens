@@ -19,8 +19,6 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    # Skip if no SUPABASE_URL secret (forks / PRs without secrets)
-    if: ${{ vars.SUPABASE_URL != '' || secrets.SUPABASE_URL != '' }}
 
     steps:
       - uses: actions/checkout@v4
