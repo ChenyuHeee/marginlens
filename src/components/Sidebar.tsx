@@ -26,6 +26,8 @@ import {
   Tag,
   Folder,
   FolderOpen,
+  FolderUp,
+  Image,
   FolderPlus,
   ChevronRight,
   ChevronDown,
@@ -60,7 +62,7 @@ function loadSort(): { key: SortKey; dir: SortDir } {
 }
 
 export function Sidebar() {
-  const { documents, activeDocumentId, activeDocument, openDocument, addDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
+  const { documents, activeDocumentId, activeDocument, openDocument, addDocument, attachImagesToDocument, addDocumentFromText, removeDocument, updateDocument } = useDocumentStore();
   const annotationStore = useAnnotationStore();
   const chatStore = useChatStore();
   const { sidebarOpen, toggleSidebar, sidebarTab, setSidebarTab, pdfOutline, tagFilter, setTagFilter, activeWorkspaceId, setActiveWorkspaceId } = useUIStore();
@@ -229,13 +231,38 @@ export function Sidebar() {
       return dir === 'asc' ? cmp : -cmp;
     });
 
-  const handleFileUpload = async (files: FileList | null) => {
+  const handleMarkdownUpload = async (files: FileList | null) => {
     if (!files) return;
-    for (const file of Array.from(files)) {
+    const importedFiles = Array.from(files);
+    for (const file of importedFiles) {
       if (file.name.match(/\.(md|markdown|pdf)$/i)) {
-        const id = await addDocument(file);
+        const id = await addDocument(file, importedFiles);
         await handleOpenDocument(id);
       }
+    }
+  };
+
+  const handleAttachImages = async (files: FileList | null) => {
+    if (!files) return;
+    if (!activeDocument || activeDocument.type !== 'markdown') {
+      window.alert('请先打开一个 Markdown 文档，再补充图片。');
+      return;
+    }
+    const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/') || f.name.match(/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i));
+    if (imageFiles.length === 0) return;
+    const result = await attachImagesToDocument(activeDocument.id, imageFiles);
+    if (!result.changed) {
+      if (result.unmatchedRefs.length > 0) {
+        const sample = result.unmatchedRefs.slice(0, 3).join('\n');
+        window.alert(`未匹配到可替换的图片路径。示例：\n${sample}`);
+      } else {
+        window.alert('未发生内容变化，可能文档中没有本地图片引用。');
+      }
+      return;
+    }
+    if (result.unmatchedRefs.length > 0) {
+      const sample = result.unmatchedRefs.slice(0, 3).join('\n');
+      window.alert(`已匹配 ${result.matchedCount} 处图片引用，但仍有 ${result.unmatchedRefs.length} 处未匹配。示例：\n${sample}`);
     }
   };
 
@@ -306,7 +333,7 @@ export function Sidebar() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    handleFileUpload(e.dataTransfer.files);
+    handleMarkdownUpload(e.dataTransfer.files);
   };
 
   const handleCreateNew = async () => {
@@ -589,12 +616,40 @@ export function Sidebar() {
           style={{ fontSize: 11.5, padding: '6px 0', borderRadius: 'var(--radius-sm)' }}
         >
           <Upload size={12} />
-          导入
+          选择MD
           <input
             type="file"
             accept=".md,.markdown,.pdf"
             multiple
-            onChange={(e) => handleFileUpload(e.target.files)}
+            onChange={(e) => handleMarkdownUpload(e.target.files)}
+            className="hidden"
+          />
+        </label>
+        <label
+          className="mac-btn justify-center cursor-pointer"
+          style={{ fontSize: 11.5, padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}
+          title="选择图片文件"
+        >
+          <Image size={12} />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => handleAttachImages(e.target.files)}
+            className="hidden"
+          />
+        </label>
+        <label
+          className="mac-btn justify-center cursor-pointer"
+          style={{ fontSize: 11.5, padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}
+          title="选择图片文件夹"
+        >
+          <FolderUp size={12} />
+          <input
+            type="file"
+            multiple
+            onChange={(e) => handleAttachImages(e.target.files)}
+            {...({ webkitdirectory: '', directory: '' } as any)}
             className="hidden"
           />
         </label>

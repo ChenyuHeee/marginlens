@@ -8,6 +8,175 @@ import { getSupabase } from '@/lib/supabase';
 import { fullSync } from '@/lib/cloudSync';
 import { v4 as uuid } from 'uuid';
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
+
+interface ImageInlineResult {
+  content: string;
+  matchedCount: number;
+  unmatchedRefs: string[];
+}
+
+interface ImageAttachResult {
+  changed: boolean;
+  matchedCount: number;
+  unmatchedRefs: string[];
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || IMAGE_EXT_RE.test(file.name);
+}
+
+function normalizeAssetPath(input: string): string {
+  let path = input.trim();
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Keep original when decodeURIComponent fails.
+  }
+  path = path.replace(/\\/g, '/');
+  path = path.replace(/^\.\//, '');
+  path = path.replace(/^\/+/, '');
+  return path;
+}
+
+function stripQueryHash(input: string): string {
+  return input.split('#')[0].split('?')[0];
+}
+
+function isLikelyLocalAssetRef(src: string): boolean {
+  const trimmed = src.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('#')) return false;
+  return !/^[a-z][a-z\d+.-]*:/i.test(trimmed);
+}
+
+function extractMarkdownDestination(rawDest: string): string {
+  const trimmed = rawDest.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('<') && trimmed.includes('>')) {
+    return trimmed.slice(1, trimmed.indexOf('>')).trim();
+  }
+  const first = trimmed.split(/\s+/)[0] ?? '';
+  return first.replace(/^['"]|['"]$/g, '');
+}
+
+function findMatchingImageFile(ref: string, candidates: File[]): File | undefined {
+  const normalizedRef = normalizeAssetPath(stripQueryHash(ref)).toLowerCase();
+  const refSegments = normalizedRef.split('/').filter(Boolean);
+  const basename = refSegments[refSegments.length - 1] || '';
+  if (!normalizedRef) return undefined;
+
+  const byPath = candidates.map((f) => ({
+    file: f,
+    rel: normalizeAssetPath(f.webkitRelativePath || f.name).toLowerCase(),
+  }));
+
+  const exactMatches = byPath.filter(({ rel }) => rel === normalizedRef || rel.endsWith(`/${normalizedRef}`));
+  if (exactMatches.length === 1) return exactMatches[0].file;
+
+  // Fallback: match by the last N path segments (N>=2), e.g. image/fig1.png
+  if (refSegments.length >= 2) {
+    for (let n = refSegments.length; n >= 2; n--) {
+      const tail = refSegments.slice(-n).join('/');
+      const tailMatches = byPath.filter(({ rel }) => rel.endsWith(`/${tail}`) || rel === tail);
+      if (tailMatches.length === 1) return tailMatches[0].file;
+    }
+  }
+
+  if (!basename) return undefined;
+  const basenameMatches = byPath.filter(({ file }) => file.name.toLowerCase() === basename);
+  if (basenameMatches.length === 1) return basenameMatches[0].file;
+  return undefined;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Read image failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function replaceAsync(
+  input: string,
+  regex: RegExp,
+  replacer: (match: RegExpExecArray) => Promise<string>,
+): Promise<string> {
+  let result = '';
+  let lastIndex = 0;
+  regex.lastIndex = 0;
+  let match = regex.exec(input);
+  while (match) {
+    result += input.slice(lastIndex, match.index);
+    result += await replacer(match);
+    lastIndex = regex.lastIndex;
+    match = regex.exec(input);
+  }
+  result += input.slice(lastIndex);
+  return result;
+}
+
+async function inlineMarkdownLocalImages(content: string, importedFiles: File[]): Promise<ImageInlineResult> {
+  const imageCandidates = importedFiles.filter((f) => isImageFile(f));
+  if (imageCandidates.length === 0) {
+    return { content, matchedCount: 0, unmatchedRefs: [] };
+  }
+
+  const dataUrlCache = new Map<string, string>();
+  const unmatched = new Set<string>();
+  let matchedCount = 0;
+  const getCachedDataUrl = async (file: File): Promise<string> => {
+    const key = `${file.webkitRelativePath || file.name}::${file.size}::${file.lastModified}`;
+    const cached = dataUrlCache.get(key);
+    if (cached) return cached;
+    const value = await fileToDataUrl(file);
+    dataUrlCache.set(key, value);
+    return value;
+  };
+
+  // Markdown image syntax: ![alt](path)
+  let output = await replaceAsync(content, /!\[([^\]]*)\]\(([^)\n]+)\)/g, async (m) => {
+    const full = m[0];
+    const alt = m[1] ?? '';
+    const rawDest = m[2] ?? '';
+    const src = extractMarkdownDestination(rawDest);
+    if (!isLikelyLocalAssetRef(src)) return full;
+    const file = findMatchingImageFile(src, imageCandidates);
+    if (!file) {
+      unmatched.add(src);
+      return full;
+    }
+    const dataUrl = await getCachedDataUrl(file);
+    matchedCount += 1;
+    return `![${alt}](${dataUrl})`;
+  });
+
+  // HTML image syntax: <img src="path" ...>
+  output = await replaceAsync(output, /<img\b([^>]*?)\bsrc=(["'])(.*?)\2([^>]*)>/gi, async (m) => {
+    const full = m[0];
+    const pre = m[1] ?? '';
+    const quote = m[2] ?? '"';
+    const src = m[3] ?? '';
+    const post = m[4] ?? '';
+    if (!isLikelyLocalAssetRef(src)) return full;
+    const file = findMatchingImageFile(src, imageCandidates);
+    if (!file) {
+      unmatched.add(src);
+      return full;
+    }
+    const dataUrl = await getCachedDataUrl(file);
+    matchedCount += 1;
+    return `<img${pre}src=${quote}${dataUrl}${quote}${post}>`;
+  });
+
+  return {
+    content: output,
+    matchedCount,
+    unmatchedRefs: Array.from(unmatched),
+  };
+}
+
 // ─── Document Store ───
 interface DocumentStore {
   documents: Document[];
@@ -16,7 +185,8 @@ interface DocumentStore {
   loading: boolean;
   loadDocuments: () => Promise<void>;
   openDocument: (id: string) => Promise<void>;
-  addDocument: (file: File) => Promise<string>;
+  addDocument: (file: File, importedFiles?: File[]) => Promise<string>;
+  attachImagesToDocument: (documentId: string, imageFiles: File[]) => Promise<ImageAttachResult>;
   addDocumentFromText: (title: string, content: string) => Promise<string>;
   removeDocument: (id: string) => Promise<void>;
   updateDocumentContent: (id: string, content: string) => Promise<void>;
@@ -52,7 +222,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     }
   },
 
-  addDocument: async (file: File) => {
+  addDocument: async (file: File, importedFiles?: File[]) => {
     const isPdf = !!file.name.match(/\.pdf$/i);
     const id = uuid();
     const now = Date.now();
@@ -61,7 +231,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     let embeddedAnnotations: ReturnType<typeof parseAnnotationsFromMarkdown>['annotations'] = [];
     if (!isPdf) {
       const raw = await file.text();
-      const parsed = parseAnnotationsFromMarkdown(raw);
+      const inlined = await inlineMarkdownLocalImages(raw, importedFiles ?? [file]);
+      const parsed = parseAnnotationsFromMarkdown(inlined.content);
       content = parsed.content;
       embeddedAnnotations = parsed.annotations;
     }
@@ -100,6 +271,35 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     const documents = await db.getAllDocuments();
     set({ documents });
     return id;
+  },
+
+  attachImagesToDocument: async (documentId: string, imageFiles: File[]) => {
+    if (imageFiles.length === 0) return { changed: false, matchedCount: 0, unmatchedRefs: [] };
+    const doc = await db.getDocument(documentId);
+    if (!doc || doc.type !== 'markdown') return { changed: false, matchedCount: 0, unmatchedRefs: [] };
+
+    const result = await inlineMarkdownLocalImages(doc.content, imageFiles);
+    if (result.content === doc.content) {
+      return { changed: false, matchedCount: result.matchedCount, unmatchedRefs: result.unmatchedRefs };
+    }
+
+    const now = Date.now();
+    const updated: Document = {
+      ...doc,
+      content: result.content,
+      fileSize: new Blob([result.content]).size,
+      updatedAt: now,
+    };
+    await db.saveDocument(updated);
+
+    const { activeDocumentId } = get();
+    const documents = await db.getAllDocuments();
+    if (activeDocumentId === documentId) {
+      set({ documents, activeDocument: updated });
+    } else {
+      set({ documents });
+    }
+    return { changed: true, matchedCount: result.matchedCount, unmatchedRefs: result.unmatchedRefs };
   },
 
   addDocumentFromText: async (title: string, content: string) => {

@@ -170,6 +170,19 @@ function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
     { icon: <BookOpen size={14} />, text: '批注直接内嵌在文档中' },
   ];
 
+  const importDocuments = async (files: FileList | null) => {
+    if (!files) return;
+    const { addDocument, openDocument } = useDocumentStore.getState();
+    const importedFiles = Array.from(files);
+    for (const file of importedFiles) {
+      if (!file.name.match(/\.(md|markdown|pdf)$/i)) continue;
+      const id = await addDocument(file, importedFiles);
+      await openDocument(id);
+      await useAnnotationStore.getState().loadAnnotations(id);
+      await useChatStore.getState().loadSessions(id);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center animate-fade-in" style={{ color: 'var(--color-text-tertiary)' }}>
       <div className="text-center max-w-md">
@@ -203,18 +216,7 @@ function WelcomePage({ onOpenSettings }: { onOpenSettings: () => void }) {
               type="file"
               accept=".md,.markdown,.pdf"
               multiple
-              onChange={async (e) => {
-                const files = e.target.files;
-                if (!files) return;
-                const { addDocument, openDocument } = useDocumentStore.getState();
-                for (const file of Array.from(files)) {
-                  if (!file.name.match(/\.(md|markdown|pdf)$/i)) continue;
-                  const id = await addDocument(file);
-                  await openDocument(id);
-                  await useAnnotationStore.getState().loadAnnotations(id);
-                  await useChatStore.getState().loadSessions(id);
-                }
-              }}
+              onChange={(e) => importDocuments(e.target.files)}
               className="hidden"
             />
           </label>
