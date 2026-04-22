@@ -52,6 +52,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   const [loading, setLoading] = useState(true);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const renderingPages = useRef<Set<number>>(new Set());
+  // Pages that have been fully rendered (canvas + text layer present)
+  const renderedPages = useRef<Set<number>>(new Set());
 
   const { setSelection } = useSelectionStore();
   const { annotations } = useAnnotationStore();
@@ -266,6 +268,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
 
         // Apply annotation highlights
         applyHighlights(textLayerDiv, pageNum);
+        renderedPages.current.add(pageNum);
       } finally {
         renderingPages.current.delete(pageNum);
       }
@@ -326,18 +329,38 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     }
   };
 
-  // Render all visible pages
+  // Clear rendered state when document or scale changes so pages get re-rendered
   useEffect(() => {
-    if (!pdfDoc) return;
+    renderedPages.current.clear();
+    renderingPages.current.clear();
+  }, [pdfDoc, scale]);
 
-    // Render all pages
-    for (let i = 1; i <= numPages; i++) {
-      const container = pageRefs.current.get(i);
-      if (container) {
-        renderPage(i, container);
-      }
-    }
-  }, [pdfDoc, scale, numPages, renderPage]);
+  // Lazy render: only render pages near the viewport using IntersectionObserver
+  useEffect(() => {
+    if (!pdfDoc || numPages === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const pageNum = parseInt((entry.target as HTMLDivElement).dataset.page || '0');
+          if (!pageNum) continue;
+          if (renderedPages.current.has(pageNum) || renderingPages.current.has(pageNum)) continue;
+          const container = pageRefs.current.get(pageNum);
+          if (container) renderPage(pageNum, container);
+        }
+      },
+      {
+        root: scrollContainerRef.current,
+        // Pre-render 1 viewport height above and below so pages appear before they’re visible
+        rootMargin: '100% 0px',
+        threshold: 0,
+      },
+    );
+
+    pageRefs.current.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [pdfDoc, numPages, scale, renderPage]);
 
   // Re-apply highlights when annotations change
   useEffect(() => {
@@ -627,7 +650,9 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
               <div
                 data-page={pageNum}
                 className="pdf-page-wrapper relative shadow-md"
-                style={{ background: '#fff' }}
+                // Default placeholder height keeps pages spaced out before they render.
+                // renderPage will overwrite container.style.height with the actual value.
+                style={{ background: '#fff', minHeight: `${Math.round(scale * 1056)}px`, minWidth: `${Math.round(scale * 816)}px` }}
                 ref={(el) => {
                   if (el) pageRefs.current.set(pageNum, el);
                 }}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -12,6 +12,40 @@ import type { SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { InlineAnnotation } from './InlineAnnotation';
 import { getReadProgress, saveReadProgress } from '@/lib/db';
+import type { Components } from 'react-markdown';
+
+// ── Markdown components defined at module level (no closure deps) to keep reference stable──
+const markdownComponents: Components = {
+  a: ({ href, children, ...props }) => {
+    if (href?.startsWith('#')) {
+      return (
+        <a
+          href={href}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(href.slice(1))?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          {...props}
+        >
+          {children}
+        </a>
+      );
+    }
+    return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+  },
+};
+
+// ── Memoised renderer — only re‐runs the full remark/rehype pipeline when content changes ──
+const MemoMarkdown = memo(({ content }: { content: string }) => (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm, remarkMath]}
+    rehypePlugins={[rehypeKatex, rehypeHighlight, rehypeRaw, rehypeSlug]}
+    components={markdownComponents}
+  >
+    {content}
+  </ReactMarkdown>
+));
+MemoMarkdown.displayName = 'MemoMarkdown';
 
 /** Scroll to and expand the inline annotation for a given annotation ID */
 function activateAnnotationHighlight(annotationId: string) {
@@ -265,34 +299,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
           style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}
           onMouseUp={handleMouseUp}
         >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex, rehypeHighlight, rehypeRaw, rehypeSlug]}
-            components={{
-              a: ({ href, children, ...props }) => {
-                if (href?.startsWith('#')) {
-                  return (
-                    <a
-                      href={href}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const target = document.getElementById(href.slice(1));
-                        if (target) {
-                          target.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </a>
-                  );
-                }
-                return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
-              },
-            }}
-          >
-            {content}
-          </ReactMarkdown>
+          <MemoMarkdown content={content} />
 
           {/* Fallback: render annotations that couldn't be placed inline (orphans) */}
           {orphanAnnotations.length > 0 && (
