@@ -112,6 +112,7 @@ export async function triggerPdf2mdWorkflow(): Promise<string> {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'apikey': token,
           'Content-Type': 'application/json',
         },
       },
