@@ -543,6 +543,47 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 4));
   const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
 
+  // Trackpad gesture handling: intercept wheel events on the scroll container so
+  // Safari doesn't interpret pinch-zoom as page zoom or horizontal swipe as
+  // back/forward navigation.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      // Pinch-to-zoom: ctrlKey is set by the browser for trackpad pinch gestures
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const delta = e.deltaY;
+        setScale((s) => {
+          const factor = delta > 0 ? 0.95 : 1.05;
+          return Math.min(Math.max(s * factor, 0.5), 4);
+        });
+        return;
+      }
+
+      // Horizontal scroll: prevent Safari from stealing it as navigation swipe.
+      // Only prevent default when there is meaningful horizontal movement and the
+      // container itself can still scroll (i.e. content wider than viewport).
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        // Don't block when already at the edge and the swipe would cause navigation
+        const atLeft = el.scrollLeft <= 0;
+        const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+        if (!(atLeft && e.deltaX < 0) && !(atRight && e.deltaX > 0)) {
+          e.preventDefault();
+          el.scrollLeft += e.deltaX;
+        } else {
+          // At the edge — prevent navigation anyway (user can use browser buttons)
+          e.preventDefault();
+          el.scrollLeft += e.deltaX;
+        }
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const stopPdf2mdWatch = useCallback(() => {
     if (pdf2mdChannelRef.current) {
       getSupabase()?.removeChannel(pdf2mdChannelRef.current);
