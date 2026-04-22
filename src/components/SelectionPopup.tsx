@@ -80,6 +80,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
         endOffset: selection.endOffset,
         chunkIndex: selection.chunkIndex,
       },
+    });
     if (!provider || !provider.apiKey) {
       useUIStore.getState().setShowApiKeyAlert(true);
       return;
