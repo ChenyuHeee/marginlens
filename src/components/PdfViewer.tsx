@@ -66,11 +66,19 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   // PDF → Markdown conversion state
   const [pdf2mdStatus, setPdf2mdStatus] = useState<'idle' | 'submitting' | 'watching' | 'done' | 'error'>('idle');
   const [pdf2mdErrMsg, setPdf2mdErrMsg] = useState<string | null>(null);
+  const [pdf2mdLogs, setPdf2mdLogs] = useState<{ t: string; msg: string }[]>([]);
+  const pdf2mdLogEndRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdf2mdChannelRef = useRef<any>(null);
   const pdf2mdJobIdRef = useRef<string | null>(null);
   const pdf2mdPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pdf2mdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const addPdf2mdLog = useCallback((msg: string) => {
+    const now = new Date();
+    const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    setPdf2mdLogs((prev) => [...prev, { t, msg }]);
+  }, []);
 
   const findBestMatchIndex = useCallback((haystack: string, needle: string, preferredStart?: number) => {
     if (!needle) return -1;
@@ -553,9 +561,11 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   const onJobFinished = useCallback(async (status: string, result_url?: string | null, error_msg?: string | null) => {
     stopPdf2mdWatch();
     if (status === 'done' && result_url) {
+      addPdf2mdLog('✅ 转换完成，正在下载 Markdown…');
       setPdf2mdStatus('done');
       try {
         const md = await downloadResultMarkdown(result_url);
+        addPdf2mdLog(`✅ 下载成功（${Math.round(md.length / 1024)} KB），正在创建文档…`);
         const newId = await useDocumentStore.getState().addDocumentFromText(
           doc.title.replace(/\.pdf$/i, '') + ' (转换稿)',
           md,
@@ -564,23 +574,32 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         await useDocumentStore.getState().openDocument(newId);
       } catch (e) {
         setPdf2mdStatus('error');
-        setPdf2mdErrMsg(e instanceof Error ? e.message : '处理转换结果时出错');
+        const msg = e instanceof Error ? e.message : '处理转换结果时出错';
+        setPdf2mdErrMsg(msg);
+        addPdf2mdLog(`❌ ${msg}`);
       }
     } else {
       setPdf2mdStatus('error');
-      setPdf2mdErrMsg(error_msg ?? '转换失败');
+      const msg = error_msg ?? '转换失败';
+      setPdf2mdErrMsg(msg);
+      addPdf2mdLog(`❌ Worker 报错: ${msg}`);
       clearPdf2mdJobId(doc.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc.id, doc.title, stopPdf2mdWatch]);
+  }, [addPdf2mdLog, doc.id, doc.title, stopPdf2mdWatch]);
 
   const startPdf2mdWatch = useCallback((jobId: string) => {
     pdf2mdJobIdRef.current = jobId;
     setPdf2mdStatus('watching');
     stopPdf2mdWatch();
+    addPdf2mdLog(`⏳ 等待 GitHub Actions 处理任务 (Job ID: ${jobId})…`);
+    addPdf2mdLog('ℹ️  cron 每 3 分钟运行一次，首次触发最多需等 3~5 分钟');
 
     const supabase = getSupabase();
-    if (!supabase) return;
+    if (!supabase) {
+      addPdf2mdLog('⚠️  Supabase 未配置，无法订阅实时更新');
+      return;
+    }
 
     const channel = supabase
       .channel(`pdf2md_job_${jobId}`)
@@ -589,18 +608,29 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         { event: 'UPDATE', schema: 'public', table: 'pdf2md_jobs', filter: `id=eq.${jobId}` },
         (payload) => {
           const { status, result_url, error_msg } = payload.new as { status: string; result_url?: string; error_msg?: string };
-          if (status === 'done' || status === 'error') {
+          addPdf2mdLog(`📡 Realtime 收到状态更新: ${status}`);
+          if (status === 'processing') {
+            addPdf2mdLog('🔄 Worker 已开始处理，PDF 转换中…');
+          } else if (status === 'done' || status === 'error') {
             onJobFinished(status, result_url, error_msg);
           }
         },
       )
-      .subscribe();
+      .subscribe((subStatus) => {
+        addPdf2mdLog(`📡 Realtime 订阅状态: ${subStatus}`);
+      });
 
     pdf2mdChannelRef.current = channel;
 
-    // Polling fallback: Realtime may miss updates; poll every 20 s as safety net.
+    // Polling fallback: poll every 20 s as safety net.
+    let pollCount = 0;
     pdf2mdPollRef.current = setInterval(async () => {
+      pollCount++;
       const job = await getPdf2mdJob(jobId);
+      addPdf2mdLog(`🔍 轮询 #${pollCount}: 状态=${job?.status ?? '无法获取'}`);
+      if (job?.status === 'processing' && pollCount === 1) {
+        addPdf2mdLog('🔄 Worker 已开始处理，PDF 转换中…');
+      }
       if (job && (job.status === 'done' || job.status === 'error')) {
         onJobFinished(job.status, job.result_url, job.error_msg);
       }
@@ -610,26 +640,39 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     pdf2mdTimeoutRef.current = setTimeout(() => {
       stopPdf2mdWatch();
       setPdf2mdStatus('error');
-      setPdf2mdErrMsg('转换超时（15 分钟），请检查 GitHub Actions 工作流是否正常运行');
+      const msg = '转换超时（15 分钟），请前往 GitHub Actions 查看日志';
+      setPdf2mdErrMsg(msg);
+      addPdf2mdLog(`❌ ${msg}`);
       clearPdf2mdJobId(doc.id);
     }, 15 * 60 * 1000);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onJobFinished, stopPdf2mdWatch]);
+  }, [addPdf2mdLog, onJobFinished, stopPdf2mdWatch]);
 
   const handleConvertToMd = useCallback(async () => {
     if (pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching') return;
     setPdf2mdStatus('submitting');
     setPdf2mdErrMsg(null);
+    setPdf2mdLogs([]);
+    addPdf2mdLog('🚀 开始上传 PDF…');
     try {
       const jobId = await createPdf2mdJob(doc);
+      addPdf2mdLog(`✅ 任务已创建 (Job ID: ${jobId})`);
+      addPdf2mdLog('📤 正在触发 GitHub Actions workflow…');
       savePdf2mdJobId(doc.id, jobId);
       startPdf2mdWatch(jobId);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : '提交转换任务失败';
       setPdf2mdStatus('error');
-      setPdf2mdErrMsg(e instanceof Error ? e.message : '提交转换任务失败');
+      setPdf2mdErrMsg(msg);
+      addPdf2mdLog(`❌ ${msg}`);
     }
-  }, [doc, pdf2mdStatus, startPdf2mdWatch]);
+  }, [addPdf2mdLog, doc, pdf2mdStatus, startPdf2mdWatch]);
+
+  // Auto-scroll log panel to bottom on new entries
+  useEffect(() => {
+    pdf2mdLogEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [pdf2mdLogs]);
 
   // Restore in-progress conversion job from localStorage on mount
   useEffect(() => {
@@ -786,6 +829,29 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           </button>
         </div>
       </div>
+
+      {/* PDF2MD Log Panel */}
+      {pdf2mdLogs.length > 0 && (pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching' || pdf2mdStatus === 'error') && (
+        <div style={{
+          flexShrink: 0,
+          maxHeight: 160,
+          overflowY: 'auto',
+          background: '#0d1117',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          padding: '8px 14px',
+          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+          fontSize: 11,
+          lineHeight: 1.7,
+        }}>
+          {pdf2mdLogs.map((entry, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, color: entry.msg.startsWith('❌') ? '#ff6b6b' : entry.msg.startsWith('✅') ? '#6bcb77' : '#8b949e' }}>
+              <span style={{ color: '#484f58', flexShrink: 0 }}>{entry.t}</span>
+              <span>{entry.msg}</span>
+            </div>
+          ))}
+          <div ref={pdf2mdLogEndRef} />
+        </div>
+      )}
 
       {/* PDF Pages */}
       <div
