@@ -6,7 +6,7 @@ import { useSelectionStore, useAnnotationStore, useDocumentStore, useUIStore } f
 import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown, Maximize2, Minimize2, FileDown, Loader2 } from 'lucide-react';
-import { createPdf2mdJob, getPdf2mdJob, downloadResultMarkdown, savePdf2mdJobId, loadPdf2mdJobId, clearPdf2mdJobId } from '@/lib/pdf2mdJob';
+import { createPdf2mdJob, triggerPdf2mdWorkflow, getPdf2mdJob, downloadResultMarkdown, savePdf2mdJobId, loadPdf2mdJobId, clearPdf2mdJobId } from '@/lib/pdf2mdJob';
 import { getSupabase } from '@/lib/supabase';
 import { getReadProgress, saveReadProgress } from '@/lib/db';
 
@@ -658,8 +658,10 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
     try {
       const jobId = await createPdf2mdJob(doc);
       addPdf2mdLog(`✅ 任务已创建 (Job ID: ${jobId})`);
-      addPdf2mdLog('📤 正在触发 GitHub Actions workflow…');
       savePdf2mdJobId(doc.id, jobId);
+      addPdf2mdLog('📤 正在触发 GitHub Actions workflow…');
+      const triggerResult = await triggerPdf2mdWorkflow();
+      addPdf2mdLog(triggerResult);
       startPdf2mdWatch(jobId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '提交转换任务失败';
@@ -678,13 +680,16 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   useEffect(() => {
     const savedJobId = loadPdf2mdJobId(doc.id);
     if (savedJobId) {
-      getPdf2mdJob(savedJobId).then((job) => {
+      getPdf2mdJob(savedJobId).then(async (job) => {
         if (!job || job.status === 'error' || job.status === 'done') {
           clearPdf2mdJobId(doc.id);
           return;
         }
-        // Job still pending/processing — subscribe via Realtime
+        // Job still pending/processing — re-subscribe and re-trigger workflow
         startPdf2mdWatch(savedJobId);
+        addPdf2mdLog('📤 重新触发 GitHub Actions workflow…');
+        const triggerResult = await triggerPdf2mdWorkflow();
+        addPdf2mdLog(triggerResult);
       });
     }
     return () => { stopPdf2mdWatch(); };

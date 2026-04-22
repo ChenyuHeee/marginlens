@@ -63,7 +63,7 @@ export function clearPdf2mdJobId(documentId: string) {
   localStorage.removeItem(LS_PREFIX + documentId);
 }
 
-/** Upload PDF and create a conversion job. Returns job ID. */
+/** Upload PDF and create a conversion job. Returns job ID. Does NOT trigger workflow — caller should call triggerPdf2mdWorkflow() separately. */
 export async function createPdf2mdJob(doc: Document): Promise<string> {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase 未配置');
@@ -91,16 +91,24 @@ export async function createPdf2mdJob(doc: Document): Promise<string> {
     .insert({ id, document_id: doc.id, pdf_storage_path: pdfPath, status: 'pending' });
   if (insertErr) throw new Error(`任务创建失败: ${insertErr.message}`);
 
-  // Trigger workflow immediately (cron acts as fallback on failure)
-  try {
-    const { error: invokeErr } = await supabase.functions.invoke('trigger-pdf2md-workflow');
-    if (invokeErr) console.warn('[PDF2MD] workflow trigger failed:', invokeErr);
-    else console.log('[PDF2MD] workflow dispatch triggered successfully');
-  } catch (e) {
-    console.warn('[PDF2MD] workflow trigger exception (cron will retry):', e);
-  }
-
   return id;
+}
+
+/**
+ * Trigger GitHub Actions workflow_dispatch via Edge Function.
+ * Returns a human-readable result string for logging.
+ */
+export async function triggerPdf2mdWorkflow(): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) return '⚠️  Supabase 未配置，跳过触发';
+  try {
+    const { error } = await supabase.functions.invoke('trigger-pdf2md-workflow');
+    if (error) return `⚠️  触发失败: ${error.message}（cron 将在 3 分钟内自动处理）`;
+    return '✅ GitHub Actions workflow 已触发';
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `⚠️  触发异常: ${msg}（cron 将在 3 分钟内自动处理）`;
+  }
 }
 
 /** Poll a job's current status. */
