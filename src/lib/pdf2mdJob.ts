@@ -33,7 +33,7 @@
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-import { getSupabase } from './supabase';
+import { getSupabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
 import type { Document } from '@/types';
 
 function randomId(len = 14): string {
@@ -99,12 +99,28 @@ export async function createPdf2mdJob(doc: Document): Promise<string> {
  * Returns a human-readable result string for logging.
  */
 export async function triggerPdf2mdWorkflow(): Promise<string> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return '⚠️  Supabase 未配置，跳过触发';
+
+  // Get current session token to authenticate the Edge Function call
   const supabase = getSupabase();
-  if (!supabase) return '⚠️  Supabase 未配置，跳过触发';
+  const token = supabase
+    ? (await supabase.auth.getSession()).data.session?.access_token ?? SUPABASE_ANON_KEY
+    : SUPABASE_ANON_KEY;
+
   try {
-    const { error } = await supabase.functions.invoke('trigger-pdf2md-workflow');
-    if (error) return `⚠️  触发失败: ${error.message}（cron 将在 3 分钟内自动处理）`;
-    return '✅ GitHub Actions workflow 已触发';
+    const resp = await fetch(
+      `${SUPABASE_URL}/functions/v1/trigger-pdf2md-workflow`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    if (resp.ok) return '✅ GitHub Actions workflow 已触发';
+    const body = await resp.text().catch(() => '');
+    return `⚠️  触发失败 (${resp.status})${body ? ': ' + body : ''}（cron 将在 3 分钟内自动处理）`;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return `⚠️  触发异常: ${msg}（cron 将在 3 分钟内自动处理）`;
