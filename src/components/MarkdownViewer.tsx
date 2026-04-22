@@ -33,6 +33,34 @@ const markdownComponents: Components = {
     }
     return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
   },
+  // Custom image renderer: data URLs and absolute URLs render normally;
+  // relative paths (not yet inlined) show a clear placeholder instead of broken alt text.
+  img: ({ src, alt, ...props }) => {
+    const isResolved = !src || src.startsWith('data:') || /^https?:\/\//i.test(src);
+    if (isResolved) {
+      return <img src={src} alt={alt} style={{ maxWidth: '100%' }} {...props} />;
+    }
+    // Relative path — show placeholder so the user knows to use the attach-images button
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.3em',
+          padding: '2px 8px',
+          borderRadius: 4,
+          background: 'var(--color-bg-tertiary)',
+          border: '1px dashed var(--color-border)',
+          color: 'var(--color-text-tertiary)',
+          fontSize: '0.85em',
+          cursor: 'default',
+        }}
+        title={`图片路径 "${src}" 尚未内嵌，请在侧边栏点击 🖼 或 📂 补充图片资源`}
+      >
+        🖼 {alt || src}
+      </span>
+    );
+  },
 };
 
 // ── Memoised renderer — only re‐runs the full remark/rehype pipeline when content changes ──

@@ -254,7 +254,7 @@ export function Sidebar() {
     if (!result.changed) {
       if (result.unmatchedRefs.length > 0) {
         const sample = result.unmatchedRefs.slice(0, 3).join('\n');
-        window.alert(`未匹配到可替换的图片路径。示例：\n${sample}`);
+        window.alert(`未匹配到可替换的图片路径。示例：\n${sample}\n\n请与视内的图片引用路径对比，也可尝试选择包含 MD 的父目录`); 
       } else {
         window.alert('未发生内容变化，可能文档中没有本地图片引用。');
       }
@@ -262,7 +262,9 @@ export function Sidebar() {
     }
     if (result.unmatchedRefs.length > 0) {
       const sample = result.unmatchedRefs.slice(0, 3).join('\n');
-      window.alert(`已匹配 ${result.matchedCount} 处图片引用，但仍有 ${result.unmatchedRefs.length} 处未匹配。示例：\n${sample}`);
+      window.alert(`已内嵌 ${result.matchedCount} 处图片，但仍有 ${result.unmatchedRefs.length} 处未匹配（下方占位符已显示）。示例：\n${sample}`); 
+    } else {
+      window.alert(`✅ 已成功内嵌 ${result.matchedCount} 处图片！`);
     }
   };
 

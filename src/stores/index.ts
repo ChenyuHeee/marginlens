@@ -278,7 +278,11 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     const doc = await db.getDocument(documentId);
     if (!doc || doc.type !== 'markdown') return { changed: false, matchedCount: 0, unmatchedRefs: [] };
 
+    console.log('[MarginLens] attachImages: candidates =', imageFiles.map((f) => `${f.webkitRelativePath || f.name} (${f.size}B)`));
+
     const result = await inlineMarkdownLocalImages(doc.content, imageFiles);
+    console.log('[MarginLens] attachImages: matched =', result.matchedCount, '| unmatched =', result.unmatchedRefs);
+
     if (result.content === doc.content) {
       return { changed: false, matchedCount: result.matchedCount, unmatchedRefs: result.unmatchedRefs };
     }
