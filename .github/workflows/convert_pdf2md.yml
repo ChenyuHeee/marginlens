@@ -1,0 +1,37 @@
+name: Convert PDF to Markdown
+
+# Picks up pending pdf2md_jobs from Supabase, converts each PDF using
+# the PDF2MD library, and uploads the resulting Markdown.
+#
+# Required repository secrets:
+#   SUPABASE_URL         — e.g. https://xxxx.supabase.co
+#   SUPABASE_SERVICE_KEY — service_role key (Settings → API)
+#
+# Runs every 3 minutes and on workflow_dispatch (triggered by Edge Function).
+
+on:
+  schedule:
+    - cron: '*/3 * * * *'
+  workflow_dispatch:
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: src/lib/pdf2md/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r src/lib/pdf2md/requirements.txt
+
+      - name: Convert pending jobs
+        run: python src/lib/pdf2md/worker.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
