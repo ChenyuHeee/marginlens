@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -47,6 +47,55 @@ const MemoMarkdown = memo(({ content }: { content: string }) => (
 ));
 MemoMarkdown.displayName = 'MemoMarkdown';
 
+// ── Split large docs into sections so we can lazily render only visible parts ──
+// Splits at H1/H2 heading boundaries that are NOT inside a code fence.
+// Falls back to blank-line splits every ~300 lines for fence-less / heading-less docs.
+function splitIntoChunks(content: string, maxLines = 300): string[] {
+  const lines = content.split('\n');
+  // Small doc — no chunking needed
+  if (lines.length <= maxLines) return [content];
+
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    // Track triple-backtick / triple-tilde fences
+    if (/^(`{3,}|~{3,})/.test(line)) inFence = !inFence;
+
+    const isHeadingBoundary =
+      !inFence &&
+      /^#{1,2} /.test(line) &&
+      current.length >= 50;
+
+    const isEmergencySplit =
+      !inFence &&
+      current.length >= maxLines &&
+      line.trim() === ''; // only split at blank line
+
+    if (isHeadingBoundary || isEmergencySplit) {
+      if (current.length) chunks.push(current.join('\n'));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.length) chunks.push(current.join('\n'));
+  return chunks.filter((c) => c.trim());
+}
+
+// ── Single chunk renderer, memo’d so already-rendered chunks never re-run remark/rehype ──
+const MarkdownChunk = memo(({ markdown, isRendered, placeholderHeight }: {
+  markdown: string;
+  isRendered: boolean;
+  placeholderHeight: number;
+}) => {
+  if (!isRendered) {
+    return <div style={{ minHeight: placeholderHeight }} aria-hidden="true" />;
+  }
+  return <MemoMarkdown content={markdown} />;
+});
+MarkdownChunk.displayName = 'MarkdownChunk';
+
 /** Scroll to and expand the inline annotation for a given annotation ID */
 function activateAnnotationHighlight(annotationId: string) {
   const { setActiveAnnotation } = useAnnotationStore.getState();
@@ -67,8 +116,51 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
   // Portal containers: annotationId → DOM element inserted after highlighted paragraph
   const [portalContainers, setPortalContainers] = useState<Map<string, HTMLElement>>(new Map());
 
+  // ── Chunked rendering state ──
+  const chunks = useMemo(() => splitIntoChunks(content), [content]);
+  const chunkRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  // Set of chunk indices that have been rendered into the DOM
+  const renderedChunksRef = useRef<Set<number>>(new Set([0]));
+  // Bumped whenever renderedChunksRef changes — triggers annotation re-highlight
+  const [renderVersion, setRenderVersion] = useState(0);
+
   // ── Read progress: restore scroll on mount, save scroll on scroll ──
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset chunk render state when document / content changes
+  useEffect(() => {
+    renderedChunksRef.current = new Set([0]);
+    chunkRefs.current.clear();
+    setRenderVersion(0);
+  }, [content]);
+
+  // Lazy-render chunks via IntersectionObserver (pre-render 2 viewports in advance)
+  useEffect(() => {
+    if (chunks.length <= 1) return; // single chunk — already fully rendered
+    const scrollEl = document.getElementById('markdown-scroll-container');
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let changed = false;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const idx = parseInt((entry.target as HTMLElement).dataset.chunkIndex ?? '-1', 10);
+          if (idx >= 0 && !renderedChunksRef.current.has(idx)) {
+            renderedChunksRef.current.add(idx);
+            changed = true;
+          }
+        }
+        if (changed) setRenderVersion((v) => v + 1);
+      },
+      { root: scrollEl, rootMargin: '200% 0px', threshold: 0 },
+    );
+    // Observe chunk wrapper divs (populated by ref callbacks in render)
+    const attachObservers = () => {
+      chunkRefs.current.forEach((el) => observer.observe(el));
+    };
+    // Refs are set during render; observe in a microtask so they’re all available
+    Promise.resolve().then(attachObservers);
+    return () => observer.disconnect();
+  }, [chunks, documentId]);
 
   // Restore scroll when document changes
   useEffect(() => {
@@ -258,7 +350,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
     }
 
     setPortalContainers(newPortals);
-  }, [annotations, documentId, content]);
+  }, [annotations, documentId, content, renderVersion]);
 
   // Temporary visual highlight for popup selection (so autoFocus doesn't lose the visual cue)
   useLayoutEffect(() => {
@@ -299,7 +391,19 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
           style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}
           onMouseUp={handleMouseUp}
         >
-          <MemoMarkdown content={content} />
+          {chunks.map((chunk, i) => (
+            <div
+              key={i}
+              data-chunk-index={i}
+              ref={(el) => { if (el) chunkRefs.current.set(i, el); }}
+            >
+              <MarkdownChunk
+                markdown={chunk}
+                isRendered={renderedChunksRef.current.has(i)}
+                placeholderHeight={chunk.split('\n').length * 22}
+              />
+            </div>
+          ))}
 
           {/* Fallback: render annotations that couldn't be placed inline (orphans) */}
           {orphanAnnotations.length > 0 && (
