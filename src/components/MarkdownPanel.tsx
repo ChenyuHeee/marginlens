@@ -89,6 +89,24 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
   }, [documentId]);
 
+  // Debounced setLiveContent: update Zustand (and all subscribers) at most
+  // every 400ms while typing, not on every keystroke.
+  const liveContentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleLiveContent = useCallback((md: string) => {
+    if (liveContentTimerRef.current) clearTimeout(liveContentTimerRef.current);
+    liveContentTimerRef.current = setTimeout(() => {
+      setLiveContent(documentId, md);
+    }, 400);
+  }, [documentId, setLiveContent]);
+  useEffect(() => {
+    return () => { if (liveContentTimerRef.current) clearTimeout(liveContentTimerRef.current); };
+  }, [documentId]);
+
+  // Large-doc threshold: above this line count use plain textarea instead of
+  // Milkdown / ProseMirror (which gets very slow for 50k+ word documents).
+  const LARGE_DOC_LINES = 500;
+  const isLargeDoc = editContent.split('\n').length > LARGE_DOC_LINES;
+
   // Export dropdown
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -408,6 +426,26 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
       <div className="flex-1 min-h-0">
         {mode === 'preview' ? (
           <MarkdownViewer content={content} documentId={documentId} />
+        ) : isLargeDoc ? (
+          // Large doc (> 500 lines): plain textarea avoids ProseMirror AST overhead
+          <textarea
+            className="w-full h-full resize-none outline-none bg-transparent p-8 lg:px-20 font-mono text-sm leading-relaxed"
+            style={{
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-bg-primary)',
+              fontSize: `${settings.fontSize}px`,
+              lineHeight: settings.lineHeight,
+            }}
+            value={editContent}
+            spellCheck={false}
+            onChange={(e) => {
+              const md = e.target.value;
+              setEditContent(md);
+              setDirty(true);
+              scheduleLiveContent(md);
+              scheduleAutosave(md);
+            }}
+          />
         ) : (
           <div className="h-full overflow-auto">
             <LiveMarkdownEditor
@@ -416,7 +454,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
               onChange={(md) => {
                 setEditContent(md);
                 setDirty(true);
-                setLiveContent(documentId, md);
+                scheduleLiveContent(md);
                 scheduleAutosave(md);
               }}
             />
