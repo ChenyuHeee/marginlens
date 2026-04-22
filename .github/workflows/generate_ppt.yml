@@ -1,0 +1,40 @@
+name: Generate PPT Exports
+
+# Runs every 3 minutes to pick up pending PPT jobs submitted by users.
+# Also triggerable manually via the GitHub Actions UI ("Run workflow").
+#
+# Required repository secrets:
+#   SUPABASE_URL          — your project URL, e.g. https://xxxx.supabase.co
+#   SUPABASE_SERVICE_KEY  — service_role key (Settings → API → service_role)
+#
+# Required Supabase setup (one-time):
+#   1. Run the SQL in src/lib/teachingPpt.ts (CREATE TABLE ppt_jobs …)
+#   2. Create a Storage bucket named `ppt-exports`, set to Public
+
+on:
+  schedule:
+    - cron: '*/3 * * * *'   # every 3 minutes
+  workflow_dispatch:         # manual trigger from GitHub Actions UI
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    # Skip if no SUPABASE_URL secret (forks / PRs without secrets)
+    if: ${{ vars.SUPABASE_URL != '' || secrets.SUPABASE_URL != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install python-pptx requests matplotlib
+
+      - name: Generate pending PPT jobs
+        run: python src/lib/teaching/slides/generate_ppt.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

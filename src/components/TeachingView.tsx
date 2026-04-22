@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, RefreshCw, Loader2, AlertCircle, ChevronLeft, ChevronRight, Share2, Check, Cpu, BookOpen, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Loader2, AlertCircle, ChevronLeft, ChevronRight, Share2, Check, Cpu, BookOpen, CheckCircle2, FileDown, Download } from 'lucide-react';
 import { useAnnotationStore, useSettingsStore } from '@/stores';
 import { getAnnotationsByDocument, getDocument, getTeachingSite, saveTeachingSite, deleteTeachingSite } from '@/lib/db';
 import { generateTeachingSite, type Progress, type Stage } from '@/lib/teaching/pipeline';
 import type { TeachingSite } from '@/lib/teaching/templates';
 import { createTeachingShare, buildTeachingShareUrl } from '@/lib/teachingShare';
+import { createPptJob, getPptJob, loadPptJobId, savePptJobId, clearPptJobId, type PptStatus } from '@/lib/teachingPpt';
 import { PresentationSlide, getSteps } from './teaching/PresentationSlide';
 
 interface TeachingViewProps {
@@ -33,10 +34,59 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
   const [shareCopied, setShareCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
 
+  // PPT export state
+  type PptUiState = 'idle' | 'confirming' | 'submitting' | 'polling' | 'done' | 'error';
+  const [pptUiState, setPptUiState] = useState<PptUiState>('idle');
+  const [pptJobId, setPptJobId] = useState<string | null>(null);
+  const [pptUrl, setPptUrl] = useState<string | null>(null);
+  const [pptErrMsg, setPptErrMsg] = useState<string | null>(null);
+
   // Presentation navigation state
   const [slideIdx, setSlideIdx] = useState(0);
   const [stepIdx, setStepIdx] = useState(0);
   const [transKey, setTransKey] = useState(0); // increment → triggers entry animation
+
+  // ── Restore PPT job from localStorage on mount ─────────────────────────────
+  useEffect(() => {
+    const jobId = loadPptJobId(documentId);
+    if (!jobId) return;
+    setPptJobId(jobId);
+    setPptUiState('polling');
+  }, [documentId]);
+
+  // ── Poll PPT job until done / error ──────────────────────────────────────────
+  useEffect(() => {
+    if (pptUiState !== 'polling' || !pptJobId) return;
+    let cancelled = false;
+    const check = async () => {
+      const job = await getPptJob(pptJobId);
+      if (cancelled || !job) return;
+      if (job.status === 'done' && job.pptx_url) {
+        setPptUrl(job.pptx_url);
+        setPptUiState('done');
+      } else if (job.status === 'error') {
+        setPptErrMsg(job.error_msg || 'PPT 生成失败');
+        setPptUiState('error');
+      }
+    };
+    check();
+    const timer = setInterval(check, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [pptUiState, pptJobId]);
+
+  const handleExportPpt = useCallback(async () => {
+    if (!site) return;
+    setPptUiState('submitting');
+    try {
+      const jobId = await createPptJob(site);
+      savePptJobId(documentId, jobId);
+      setPptJobId(jobId);
+      setPptUiState('polling');
+    } catch (err) {
+      setPptErrMsg((err as Error).message);
+      setPptUiState('error');
+    }
+  }, [site, documentId]);
 
   const generate = useCallback(async (force = false) => {
     setError(null);
@@ -202,7 +252,7 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
         WebkitFontSmoothing: 'antialiased',
         userSelect: 'none',
       }}
-      onClick={!loading && !error ? goNext : undefined}
+      onClick={!loading && !error && pptUiState !== 'confirming' ? goNext : undefined}
     >
       {/* ── Top bar ── */}
       <header
@@ -238,6 +288,72 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* PPT export button — only shown when site is ready */}
+          {site && !loading && !error && (
+            <div style={{ position: 'relative' }}>
+              {pptUiState === 'idle' && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setPptUiState('confirming'); }}
+                  title="导出为 PPT 文件"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)',
+                    borderRadius: 8, padding: '6px 14px', color: '#9090b8', fontSize: 13, cursor: 'pointer',
+                  }}
+                >
+                  <FileDown size={12} /> 导出 PPT
+                </button>
+              )}
+              {(pptUiState === 'submitting' || pptUiState === 'polling') && (
+                <button
+                  disabled
+                  title={pptUiState === 'submitting' ? '正在提交…' : 'GitHub Actions 生成中，通常 3-5 分钟'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 8, padding: '6px 14px', color: '#5050a0', fontSize: 13, cursor: 'not-allowed',
+                  }}
+                >
+                  <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                  {pptUiState === 'submitting' ? '提交中…' : 'PPT 生成中…'}
+                </button>
+              )}
+              {pptUiState === 'done' && pptUrl && (
+                <a
+                  href={pptUrl}
+                  download
+                  onClick={(e) => e.stopPropagation()}
+                  title="下载生成的 PPT 文件"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(74,222,128,0.10)', border: '1px solid rgba(74,222,128,0.30)',
+                    borderRadius: 8, padding: '6px 14px', color: '#4ade80', fontSize: 13,
+                    textDecoration: 'none', cursor: 'pointer',
+                  }}
+                >
+                  <Download size={12} /> 下载 PPT
+                </a>
+              )}
+              {pptUiState === 'error' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearPptJobId(documentId);
+                    setPptJobId(null); setPptUrl(null); setPptErrMsg(null);
+                    setPptUiState('idle');
+                  }}
+                  title={pptErrMsg || 'PPT 生成失败，点击重置'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(251,113,133,0.10)', border: '1px solid rgba(251,113,133,0.30)',
+                    borderRadius: 8, padding: '6px 14px', color: '#fb7185', fontSize: 13, cursor: 'pointer',
+                  }}
+                >
+                  <AlertCircle size={12} /> 导出失败
+                </button>
+              )}
+            </div>
+          )}
           {/* Share button — only shown when site is ready */}
           {site && !loading && !error && (
             <div style={{ position: 'relative' }}>
@@ -384,6 +500,53 @@ export function TeachingView({ documentId, onClose }: TeachingViewProps) {
             </button>
           </div>
         </footer>
+      )}
+
+      {/* ── PPT export warning modal ── */}
+      {pptUiState === 'confirming' && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div style={{
+            background: '#0f0f22', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 16, padding: '32px 36px', maxWidth: 460, width: '90%',
+          }}>
+            <h3 style={{ margin: '0 0 18px', fontSize: 18, fontWeight: 700, color: '#f0f0f8' }}>
+              ⚠️ 导出为 PPT 前请确认
+            </h3>
+            <ul style={{ margin: '0 0 24px', padding: '0 0 0 20px', color: '#9090b8', fontSize: 14, lineHeight: 1.85 }}>
+              <li>你的<strong style={{ color: '#f0f0f8' }}>笔记内容及生成的幻灯片</strong>将被上传至服务器</li>
+              <li>生成的 PPT 文件将以<strong style={{ color: '#fb7185' }}>公开链接</strong>形式存储，任何知道链接的人均可下载</li>
+              <li>PPT 由 GitHub Actions 在云端生成，通常需要 <strong style={{ color: '#fbbf24' }}>3–6 分钟</strong>；刷新页面后仍可继续等待或下载</li>
+            </ul>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPptUiState('idle')}
+                style={{
+                  background: 'transparent', border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 8, padding: '8px 20px', color: '#7070a0', fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => { setPptUiState('idle'); handleExportPpt(); }}
+                style={{
+                  background: 'rgba(91,156,248,0.15)', border: '1px solid rgba(91,156,248,0.40)',
+                  borderRadius: 8, padding: '8px 20px', color: '#5b9cf8', fontSize: 13,
+                  cursor: 'pointer', fontWeight: 600,
+                }}
+              >
+                确认，我了解以上风险
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
