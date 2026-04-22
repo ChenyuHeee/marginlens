@@ -28,7 +28,9 @@ jobs:
           cache-dependency-path: src/lib/pdf2md/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r src/lib/pdf2md/requirements.txt
+        run: |
+          pip install -r src/lib/pdf2md/requirements.txt
+          pip install --upgrade --no-cache-dir "git+https://github.com/ChenyuHeee/PDF2MD.git@main"
 
       - name: Convert pending jobs
         run: python src/lib/pdf2md/worker.py

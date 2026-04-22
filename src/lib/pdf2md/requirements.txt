@@ -1,4 +1,4 @@
-git+https://github.com/ChenyuHeee/PDF2MD.git
+git+https://github.com/ChenyuHeee/PDF2MD.git@main
 PyMuPDF>=1.24
 pdfplumber>=0.11
 Pillow>=10.0
