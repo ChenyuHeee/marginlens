@@ -5,7 +5,7 @@ import { getAnnotationsByDocument, getDocument, getTeachingSite, saveTeachingSit
 import { generateTeachingSite, type Progress, type Stage } from '@/lib/teaching/pipeline';
 import type { TeachingSite } from '@/lib/teaching/templates';
 import { createTeachingShare, buildTeachingShareUrl } from '@/lib/teachingShare';
-import { createPptJob, getPptJob, loadPptJobId, savePptJobId, clearPptJobId, type PptStatus } from '@/lib/teachingPpt';
+import { createPptJob, getPptJob, loadPptJobId, savePptJobId, clearPptJobId } from '@/lib/teachingPpt';
 import { PresentationSlide, getSteps } from './teaching/PresentationSlide';
 
 interface TeachingViewProps {
