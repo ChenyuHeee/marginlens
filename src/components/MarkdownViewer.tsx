@@ -35,7 +35,8 @@ const markdownComponents: Components = {
   },
   // Custom image renderer: data URLs and absolute URLs render normally;
   // relative paths (not yet inlined) show a clear placeholder instead of broken alt text.
-  img: ({ src, alt, ...props }) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  img: ({ src, alt, node: _node, ...props }) => {
     const isResolved = !src || src.startsWith('data:') || /^https?:\/\//i.test(src);
     if (isResolved) {
       return <img src={src} alt={alt} style={{ maxWidth: '100%' }} {...props} />;
@@ -63,6 +64,22 @@ const markdownComponents: Components = {
   },
 };
 
+/**
+ * Pre-process markdown before handing to remark.
+ * remark's inline URL parser breaks on very long data URLs (base64 images),
+ * so we convert  ![alt](data:...)  →  <img src="data:..." alt="..." />
+ * which rehype-raw then handles correctly.
+ * HTML img tags with data URLs are left untouched.
+ */
+function preprocessDataUrlImages(content: string): string {
+  // Only target markdown image syntax whose URL is a data: URI.
+  // Base64 chars are [A-Za-z0-9+/=] — no ')' — so [^)]+ is safe here.
+  return content.replace(
+    /!\[([^\]]*)\]\((data:[^)]+)\)/g,
+    (_, alt, src) => `<img src="${src}" alt="${alt.replace(/"/g, '&quot;')}" style="max-width:100%" />`,
+  );
+}
+
 // ── Memoised renderer — only re‐runs the full remark/rehype pipeline when content changes ──
 const MemoMarkdown = memo(({ content }: { content: string }) => (
   <ReactMarkdown
@@ -70,7 +87,7 @@ const MemoMarkdown = memo(({ content }: { content: string }) => (
     rehypePlugins={[rehypeKatex, rehypeHighlight, rehypeRaw, rehypeSlug]}
     components={markdownComponents}
   >
-    {content}
+    {preprocessDataUrlImages(content)}
   </ReactMarkdown>
 ));
 MemoMarkdown.displayName = 'MemoMarkdown';
