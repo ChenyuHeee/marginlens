@@ -747,23 +747,32 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
             <ZoomIn size={14} style={{ color: 'var(--color-text-secondary)' }} />
           </button>
           <div style={{ width: 1, height: 14, background: 'var(--color-border)', margin: '0 2px' }} />
-          <button
-            onClick={handleConvertToMd}
-            className="p-1 rounded hover:bg-[var(--color-card-hover)]"
-            title={
-              pdf2mdStatus === 'idle' ? '转为 Markdown' :
-              pdf2mdStatus === 'submitting' ? '提交中...' :
-              pdf2mdStatus === 'watching' ? '转换中...' :
-              pdf2mdStatus === 'done' ? '转换完成，已在新文档中打开' :
-              pdf2mdErrMsg ?? '转换失败，点击重试'
-            }
-            disabled={pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching'}
-          >
-            {pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching'
-              ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-text-secondary)' }} />
-              : <FileDown size={14} style={{ color: pdf2mdStatus === 'error' ? '#ff3b30' : 'var(--color-text-secondary)' }} />
-            }
-          </button>
+          {(pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching') ? (
+            <button
+              onClick={() => {
+                stopPdf2mdWatch();
+                clearPdf2mdJobId(doc.id);
+                setPdf2mdStatus('idle');
+                setPdf2mdErrMsg(null);
+              }}
+              className="p-1 rounded hover:bg-[var(--color-card-hover)]"
+              title="取消转换"
+            >
+              <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-text-secondary)' }} />
+            </button>
+          ) : (
+            <button
+              onClick={handleConvertToMd}
+              className="p-1 rounded hover:bg-[var(--color-card-hover)]"
+              title={
+                pdf2mdStatus === 'idle' ? '转为 Markdown' :
+                pdf2mdStatus === 'done' ? '转换完成，已在新文档中打开' :
+                pdf2mdErrMsg ?? '转换失败，点击重试'
+              }
+            >
+              <FileDown size={14} style={{ color: pdf2mdStatus === 'error' ? '#ff3b30' : 'var(--color-text-secondary)' }} />
+            </button>
+          )}
           <div style={{ width: 1, height: 14, background: 'var(--color-border)', margin: '0 2px' }} />
           <button
             onClick={() => useUIStore.getState().toggleFocusMode()}
