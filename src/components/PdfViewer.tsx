@@ -7,6 +7,7 @@ import type { Document, SelectionInfo } from '@/types';
 import { SelectionPopup } from './SelectionPopup';
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown, Maximize2, Minimize2, FileDown, Loader2 } from 'lucide-react';
 import { createPdf2mdJob, getPdf2mdJob, downloadResultMarkdown, savePdf2mdJobId, loadPdf2mdJobId, clearPdf2mdJobId } from '@/lib/pdf2mdJob';
+import { getSupabase } from '@/lib/supabase';
 import { getReadProgress, saveReadProgress } from '@/lib/db';
 
 // Configure worker using Vite's ?worker import for reliable cross-browser loading
@@ -63,9 +64,10 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   const docAnnotations = annotations.filter((a) => a.documentId === doc.id);
 
   // PDF → Markdown conversion state
-  const [pdf2mdStatus, setPdf2mdStatus] = useState<'idle' | 'submitting' | 'polling' | 'done' | 'error'>('idle');
+  const [pdf2mdStatus, setPdf2mdStatus] = useState<'idle' | 'submitting' | 'watching' | 'done' | 'error'>('idle');
   const [pdf2mdErrMsg, setPdf2mdErrMsg] = useState<string | null>(null);
-  const pdf2mdPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdf2mdChannelRef = useRef<any>(null);
   const pdf2mdJobIdRef = useRef<string | null>(null);
 
   const findBestMatchIndex = useCallback((haystack: string, needle: string, preferredStart?: number) => {
@@ -531,55 +533,78 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 4));
   const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
 
-  const startPdf2mdPolling = useCallback((jobId: string) => {
-    pdf2mdJobIdRef.current = jobId;
-    setPdf2mdStatus('polling');
-    if (pdf2mdPollRef.current) clearInterval(pdf2mdPollRef.current);
-    pdf2mdPollRef.current = setInterval(async () => {
-      const job = await getPdf2mdJob(jobId);
-      if (!job) return;
-      if (job.status === 'done' && job.result_url) {
-        clearInterval(pdf2mdPollRef.current!);
-        pdf2mdPollRef.current = null;
-        setPdf2mdStatus('done');
-        try {
-          const md = await downloadResultMarkdown(job.result_url);
-          const newId = await useDocumentStore.getState().addDocumentFromText(
-            doc.title.replace(/\.pdf$/i, '') + ' (转换稿)',
-            md,
-          );
-          clearPdf2mdJobId(doc.id);
-          await useDocumentStore.getState().openDocument(newId);
-        } catch (e) {
-          setPdf2mdStatus('error');
-          setPdf2mdErrMsg(e instanceof Error ? e.message : '处理转换结果时出错');
-        }
-      } else if (job.status === 'error') {
-        clearInterval(pdf2mdPollRef.current!);
-        pdf2mdPollRef.current = null;
-        setPdf2mdStatus('error');
-        setPdf2mdErrMsg(job.error_msg ?? '转换失败');
+  const stopPdf2mdWatch = useCallback(() => {
+    if (pdf2mdChannelRef.current) {
+      getSupabase()?.removeChannel(pdf2mdChannelRef.current);
+      pdf2mdChannelRef.current = null;
+    }
+  }, []);
+
+  const onJobFinished = useCallback(async (status: string, result_url?: string | null, error_msg?: string | null) => {
+    stopPdf2mdWatch();
+    if (status === 'done' && result_url) {
+      setPdf2mdStatus('done');
+      try {
+        const md = await downloadResultMarkdown(result_url);
+        const newId = await useDocumentStore.getState().addDocumentFromText(
+          doc.title.replace(/\.pdf$/i, '') + ' (转换稿)',
+          md,
+        );
         clearPdf2mdJobId(doc.id);
+        await useDocumentStore.getState().openDocument(newId);
+      } catch (e) {
+        setPdf2mdStatus('error');
+        setPdf2mdErrMsg(e instanceof Error ? e.message : '处理转换结果时出错');
       }
-    }, 5000);
+    } else {
+      setPdf2mdStatus('error');
+      setPdf2mdErrMsg(error_msg ?? '转换失败');
+      clearPdf2mdJobId(doc.id);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc.id, doc.title]);
+  }, [doc.id, doc.title, stopPdf2mdWatch]);
+
+  const startPdf2mdWatch = useCallback((jobId: string) => {
+    pdf2mdJobIdRef.current = jobId;
+    setPdf2mdStatus('watching');
+    stopPdf2mdWatch();
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel(`pdf2md_job_${jobId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'pdf2md_jobs', filter: `id=eq.${jobId}` },
+        (payload) => {
+          const { status, result_url, error_msg } = payload.new as { status: string; result_url?: string; error_msg?: string };
+          if (status === 'done' || status === 'error') {
+            onJobFinished(status, result_url, error_msg);
+          }
+        },
+      )
+      .subscribe();
+
+    pdf2mdChannelRef.current = channel;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onJobFinished, stopPdf2mdWatch]);
 
   const handleConvertToMd = useCallback(async () => {
-    if (pdf2mdStatus === 'submitting' || pdf2mdStatus === 'polling') return;
+    if (pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching') return;
     setPdf2mdStatus('submitting');
     setPdf2mdErrMsg(null);
     try {
       const jobId = await createPdf2mdJob(doc);
       savePdf2mdJobId(doc.id, jobId);
-      startPdf2mdPolling(jobId);
+      startPdf2mdWatch(jobId);
     } catch (e) {
       setPdf2mdStatus('error');
       setPdf2mdErrMsg(e instanceof Error ? e.message : '提交转换任务失败');
     }
-  }, [doc, pdf2mdStatus, startPdf2mdPolling]);
+  }, [doc, pdf2mdStatus, startPdf2mdWatch]);
 
-  // Restore pending conversion job from localStorage on mount
+  // Restore in-progress conversion job from localStorage on mount
   useEffect(() => {
     const savedJobId = loadPdf2mdJobId(doc.id);
     if (savedJobId) {
@@ -588,12 +613,11 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
           clearPdf2mdJobId(doc.id);
           return;
         }
-        startPdf2mdPolling(savedJobId);
+        // Job still pending/processing — subscribe via Realtime
+        startPdf2mdWatch(savedJobId);
       });
     }
-    return () => {
-      if (pdf2mdPollRef.current) clearInterval(pdf2mdPollRef.current);
-    };
+    return () => { stopPdf2mdWatch(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -702,13 +726,13 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
             title={
               pdf2mdStatus === 'idle' ? '转为 Markdown' :
               pdf2mdStatus === 'submitting' ? '提交中...' :
-              pdf2mdStatus === 'polling' ? '转换中...' :
+              pdf2mdStatus === 'watching' ? '转换中...' :
               pdf2mdStatus === 'done' ? '转换完成，已在新文档中打开' :
               pdf2mdErrMsg ?? '转换失败，点击重试'
             }
-            disabled={pdf2mdStatus === 'submitting' || pdf2mdStatus === 'polling'}
+            disabled={pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching'}
           >
-            {pdf2mdStatus === 'submitting' || pdf2mdStatus === 'polling'
+            {pdf2mdStatus === 'submitting' || pdf2mdStatus === 'watching'
               ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-text-secondary)' }} />
               : <FileDown size={14} style={{ color: pdf2mdStatus === 'error' ? '#ff3b30' : 'var(--color-text-secondary)' }} />
             }
