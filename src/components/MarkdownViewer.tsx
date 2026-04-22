@@ -223,7 +223,16 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
 
       const rect = range.getBoundingClientRect();
 
-      const offsetInfo = getRangeOffsets(containerRef.current, range, '.inline-annotation, .annotation-portal, .katex');
+      // ── Find the chunk wrapper that contains this selection ──
+      const chunkWrapperEl = (range.startContainer as Node).parentElement
+        ?.closest<HTMLElement>('[data-chunk-index]');
+      const chunkIndex = chunkWrapperEl
+        ? parseInt(chunkWrapperEl.dataset.chunkIndex ?? '0', 10)
+        : 0;
+      // Compute offsets relative to the chunk container (or full container if no chunk found)
+      const searchRoot = chunkWrapperEl ?? containerRef.current;
+
+      const offsetInfo = getRangeOffsets(searchRoot, range, '.inline-annotation, .annotation-portal, .katex');
       const leadingTrim = rawText.length - rawText.trimStart().length;
       const trailingTrim = rawText.length - rawText.trimEnd().length;
       const selStart = offsetInfo.start + leadingTrim;
@@ -235,7 +244,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
         : '';
       const contextAfter = offsetInfo.fullText.slice(selEnd, selEnd + 200);
 
-      const paragraphs = containerRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, td, th');
+      const paragraphs = searchRoot.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, td, th');
       let paragraphIndex = 0;
       for (let i = 0; i < paragraphs.length; i++) {
         if (paragraphs[i].contains(range.startContainer)) {
@@ -252,6 +261,7 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
         paragraphIndex,
         startOffset: selStart,
         endOffset: selEnd,
+        chunkIndex,
       };
 
       setPopupSelection(info);
@@ -312,25 +322,32 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
     containerRef.current.querySelectorAll('.annotation-portal').forEach((el) => el.remove());
 
     const newPortals = new Map<string, HTMLElement>();
+    const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'DIV', 'SECTION', 'ARTICLE', 'TD', 'TH', 'DT', 'DD']);
 
     for (const annotation of docAnnotations) {
-      // Try to highlight the text in the rendered markdown
+      // Resolve the search root: the specific chunk if known, else full container
+      const chunkIndex = annotation.positionHint?.chunkIndex;
+      const searchRoot: HTMLElement =
+        (typeof chunkIndex === 'number' && chunkRefs.current.get(chunkIndex))
+          ? chunkRefs.current.get(chunkIndex)!
+          : containerRef.current;
+
+      // Skip annotations whose chunk hasn't rendered yet — renderVersion bump will retry
+      if (typeof chunkIndex === 'number' && !renderedChunksRef.current.has(chunkIndex)) continue;
+
       highlightText(
-        containerRef.current,
+        searchRoot,
         annotation.selectedText,
         annotation.id,
         annotation.positionHint?.startOffset,
-          annotation.positionHint?.endOffset,
+        annotation.positionHint?.endOffset,
       );
 
-      // Find the highlight span we just inserted
-      const highlightSpan: Element | null = containerRef.current.querySelector(
+      const highlightSpan: Element | null = searchRoot.querySelector(
         `.annotation-highlight[data-annotation-id="${CSS.escape(annotation.id)}"]`
       );
 
       if (highlightSpan) {
-        // Walk up to the nearest block-level parent using tag names (avoids getComputedStyle reflow)
-        const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'DIV', 'SECTION', 'ARTICLE', 'TD', 'TH', 'DT', 'DD']);
         let blockParent: Element | null = highlightSpan.parentElement;
         while (blockParent && blockParent !== containerRef.current) {
           if (BLOCK_TAGS.has(blockParent.tagName) || blockParent.parentElement === containerRef.current) {
@@ -364,9 +381,13 @@ export function MarkdownViewer({ content, documentId }: MarkdownViewerProps) {
       }
     });
     if (!popupSelection) return;
-    // Apply temporary highlight at the captured offsets
+    // Only search within the chunk the selection came from (chunk-local offsets)
+    const searchRoot: HTMLElement =
+      (typeof popupSelection.chunkIndex === 'number' && chunkRefs.current.get(popupSelection.chunkIndex))
+        ? chunkRefs.current.get(popupSelection.chunkIndex)!
+        : containerRef.current;
     highlightText(
-      containerRef.current,
+      searchRoot,
       popupSelection.text,
       '__temp_selection__',
       popupSelection.startOffset,

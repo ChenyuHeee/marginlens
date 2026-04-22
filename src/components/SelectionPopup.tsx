@@ -78,10 +78,8 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
         paragraphIndex: selection.paragraphIndex,
         startOffset: selection.startOffset,
         endOffset: selection.endOffset,
+        chunkIndex: selection.chunkIndex,
       },
-    });
-
-    const provider = useSettingsStore.getState().getActiveProvider();
     if (!provider || !provider.apiKey) {
       useUIStore.getState().setShowApiKeyAlert(true);
       return;
@@ -134,6 +132,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
         paragraphIndex: selection.paragraphIndex,
         startOffset: selection.startOffset,
         endOffset: selection.endOffset,
+        chunkIndex: selection.chunkIndex,
       },
     });
     selectionStore.setSelection(null);
@@ -162,6 +161,7 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
         paragraphIndex: selection.paragraphIndex,
         startOffset: selection.startOffset,
         endOffset: selection.endOffset,
+        chunkIndex: selection.chunkIndex,
       },
     });
     const annotationId = annotation.id;

@@ -211,7 +211,7 @@ export function ChatPanel() {
     content: string,
     selectedText?: string,
     userQuestion?: string,
-    positionHint?: { paragraphIndex: number; startOffset: number; endOffset: number },
+    positionHint?: { paragraphIndex: number; startOffset: number; endOffset: number; chunkIndex?: number },
   ) => {
     if (!activeDocument) return;
     const title = userQuestion || selectedText || '批注';

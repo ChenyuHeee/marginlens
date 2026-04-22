@@ -34,6 +34,8 @@ export interface Annotation {
     paragraphIndex: number;
     startOffset: number;
     endOffset: number;
+    /** Index of the rendered Markdown chunk this annotation lives in */
+    chunkIndex?: number;
   };
 }
 
@@ -50,6 +52,8 @@ export interface ChatMessage {
     paragraphIndex: number;
     startOffset: number;
     endOffset: number;
+    /** Index of the rendered Markdown chunk this annotation lives in */
+    chunkIndex?: number;
   };
   timestamp: number;
   /** Whether the message is currently streaming */
@@ -114,6 +118,8 @@ export interface SelectionInfo {
   paragraphIndex: number;
   startOffset: number;
   endOffset: number;
+  /** Chunk index within a chunked Markdown document */
+  chunkIndex?: number;
 }
 
 export interface GitHubSyncConfig {
