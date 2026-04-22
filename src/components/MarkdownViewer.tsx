@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -33,13 +33,21 @@ const markdownComponents: Components = {
     }
     return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
   },
-  // Custom image renderer: data URLs and absolute URLs render normally;
-  // relative paths (not yet inlined) show a clear placeholder instead of broken alt text.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  img: ({ src, alt, node: _node, ...props }) => {
+  // Custom image renderer:
+  // - data: / https: URLs → render as <img> directly
+  // - relative paths (not yet inlined) → visible placeholder
+  img: ({ src, alt }) => {
+    console.log('[MarginLens] img render src[:80]:', (src ?? '(empty)').slice(0, 80));
     const isResolved = !src || src.startsWith('data:') || /^https?:\/\//i.test(src);
     if (isResolved) {
-      return <img src={src} alt={alt} style={{ maxWidth: '100%' }} {...props} />;
+      return (
+        <img
+          src={src}
+          alt={alt ?? ''}
+          style={{ maxWidth: '100%', display: 'block', margin: '0.8em 0' }}
+          onError={() => console.warn('[MarginLens] img load error, src prefix:', (src ?? '').slice(0, 80))}
+        />
+      );
     }
     // Relative path — show placeholder so the user knows to use the attach-images button
     return (
@@ -65,19 +73,12 @@ const markdownComponents: Components = {
 };
 
 /**
- * Pre-process markdown before handing to remark.
- * remark's inline URL parser breaks on very long data URLs (base64 images),
- * so we convert  ![alt](data:...)  →  <img src="data:..." alt="..." />
- * which rehype-raw then handles correctly.
- * HTML img tags with data URLs are left untouched.
+ * react-markdown v10's defaultUrlTransform blocks data: URLs (only allows https/ircs/mailto/xmpp).
+ * We allow data: through so that base64-inlined images render correctly.
  */
-function preprocessDataUrlImages(content: string): string {
-  // Only target markdown image syntax whose URL is a data: URI.
-  // Base64 chars are [A-Za-z0-9+/=] — no ')' — so [^)]+ is safe here.
-  return content.replace(
-    /!\[([^\]]*)\]\((data:[^)]+)\)/g,
-    (_, alt, src) => `<img src="${src}" alt="${alt.replace(/"/g, '&quot;')}" style="max-width:100%" />`,
-  );
+function allowDataUrls(url: string): string {
+  if (url.startsWith('data:')) return url;
+  return defaultUrlTransform(url);
 }
 
 // ── Memoised renderer — only re‐runs the full remark/rehype pipeline when content changes ──
@@ -86,8 +87,9 @@ const MemoMarkdown = memo(({ content }: { content: string }) => (
     remarkPlugins={[remarkGfm, remarkMath]}
     rehypePlugins={[rehypeKatex, rehypeHighlight, rehypeRaw, rehypeSlug]}
     components={markdownComponents}
+    urlTransform={allowDataUrls}
   >
-    {preprocessDataUrlImages(content)}
+    {content}
   </ReactMarkdown>
 ));
 MemoMarkdown.displayName = 'MemoMarkdown';
