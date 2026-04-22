@@ -101,11 +101,9 @@ export async function createPdf2mdJob(doc: Document): Promise<string> {
 export async function triggerPdf2mdWorkflow(): Promise<string> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return '⚠️  Supabase 未配置，跳过触发';
 
-  // Get current session token to authenticate the Edge Function call
-  const supabase = getSupabase();
-  const token = supabase
-    ? (await supabase.auth.getSession()).data.session?.access_token ?? SUPABASE_ANON_KEY
-    : SUPABASE_ANON_KEY;
+  // Always use the anon key — Edge Function has no user auth check,
+  // and session tokens use ES256 which the Edge Function runtime rejects.
+  const token = SUPABASE_ANON_KEY;
 
   try {
     const resp = await fetch(
