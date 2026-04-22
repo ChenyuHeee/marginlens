@@ -60,6 +60,14 @@ export async function createPptJob(site: TeachingSite): Promise<string> {
     .insert({ id, site_data: site, status: 'pending' });
 
   if (error) throw new Error(`PPT 任务提交失败: ${error.message}`);
+
+  // Immediately trigger the GitHub Actions workflow so generation starts at once
+  // instead of waiting for the 3-minute cron. Fire-and-forget — if it fails the
+  // cron will pick it up anyway, so don't throw on trigger errors.
+  supabase.functions
+    .invoke('trigger-ppt-workflow')
+    .catch((e) => console.warn('[PPT] workflow trigger failed (cron will retry):', e));
+
   return id;
 }
 
