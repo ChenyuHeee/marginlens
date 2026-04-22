@@ -414,9 +414,16 @@ export async function generateTeachingSite(
         genBatchesDone++;
         return valid;
       }
-      throw new Error(`修复后仍无有效模块：${describeModuleIssues(rawArr)}`);
+      // Repair also produced nothing valid — log and return empty (don't throw)
+      const msg = `批次 ${batchIdx + 1} 修复后仍无有效模块，已跳过：${describeModuleIssues(rawArr)}`;
+      console.warn('[Teaching] Generator repair failed:', msg);
+      onProgress?.({ stage: 'generator', fraction: repairFrac, message: `⚠️ ${msg}` });
+      return [];
     } catch (e) {
-      throw new Error(`内容生成失败（批次 ${batchIdx + 1} 已 LLM 修复）：${(e as Error).message}`);
+      const msg = `批次 ${batchIdx + 1} 修复异常，已跳过：${(e as Error).message}`;
+      console.warn('[Teaching] Generator repair exception:', msg);
+      onProgress?.({ stage: 'generator', fraction: repairFrac, message: `⚠️ ${msg}` });
+      return [];
     }
   }
 
@@ -425,6 +432,9 @@ export async function generateTeachingSite(
     outlineBatches.map((batch, idx) => runGenBatch(batch, idx)),
   );
   const generatedModules = genBatchResults.flat();
+  if (generatedModules.length === 0) {
+    throw new Error('所有批次生成均失败，请检查 LLM 配置或重试');
+  }
   onProgress?.({ stage: 'generator', fraction: GEN_FRAC_END, message: `已生成 ${generatedModules.length} 个模块` });
 
   // ─── 3) Reviewer (all batches in PARALLEL) ────────────────────────────────
