@@ -81,6 +81,8 @@ export function SelectionPopup({ selection, onClose, documentId }: SelectionPopu
         chunkIndex: selection.chunkIndex,
       },
     });
+
+    const provider = useSettingsStore.getState().getActiveProvider();
     if (!provider || !provider.apiKey) {
       useUIStore.getState().setShowApiKeyAlert(true);
       return;

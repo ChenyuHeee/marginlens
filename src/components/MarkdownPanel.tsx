@@ -11,7 +11,7 @@ import { Eye, Edit3, Download, Save, GitBranch, Maximize2, Minimize2, Share2, Co
 import { MarkdownViewer } from './MarkdownViewer';
 import { LiveMarkdownEditor } from './LiveMarkdownEditor';
 import { SyncDialog } from './SyncDialog';
-import { useDocumentStore, useAnnotationStore, useGitHubSyncStore, useUIStore } from '@/stores';
+import { useDocumentStore, useAnnotationStore, useGitHubSyncStore, useUIStore, useSettingsStore } from '@/stores';
 import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
 import { createShare, buildShareUrl, type ShareMode, type AccessMode } from '@/lib/share';
 import { getAnnotationsByDocument } from '@/lib/db';
@@ -44,6 +44,7 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
   const [editContent, setEditContent] = useState(content);
   const { updateDocumentContent, updateDocument, setLiveContent } = useDocumentStore();
   const { annotations } = useAnnotationStore();
+  const { settings } = useSettingsStore();
   const [dirty, setDirty] = useState(false);
 
   // Reset state only when the document actually switches (not on every content prop update)
