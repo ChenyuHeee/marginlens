@@ -867,7 +867,7 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
         onMouseUp={handleMouseUp}
         onClick={handleHighlightClick}
       >
-        <div className="flex flex-col items-center py-4 gap-3">
+        <div className="flex flex-col items-center py-4 gap-3 min-w-full w-max">
           {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
             <div key={pageNum} className="flex flex-col items-center gap-3" style={{ width: 'fit-content' }}>
               <div
