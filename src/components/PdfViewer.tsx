@@ -69,6 +69,8 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdf2mdChannelRef = useRef<any>(null);
   const pdf2mdJobIdRef = useRef<string | null>(null);
+  const pdf2mdPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pdf2mdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const findBestMatchIndex = useCallback((haystack: string, needle: string, preferredStart?: number) => {
     if (!needle) return -1;
@@ -538,6 +540,14 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       getSupabase()?.removeChannel(pdf2mdChannelRef.current);
       pdf2mdChannelRef.current = null;
     }
+    if (pdf2mdPollRef.current) {
+      clearInterval(pdf2mdPollRef.current);
+      pdf2mdPollRef.current = null;
+    }
+    if (pdf2mdTimeoutRef.current) {
+      clearTimeout(pdf2mdTimeoutRef.current);
+      pdf2mdTimeoutRef.current = null;
+    }
   }, []);
 
   const onJobFinished = useCallback(async (status: string, result_url?: string | null, error_msg?: string | null) => {
@@ -587,6 +597,23 @@ export function PdfViewer({ document: doc }: PdfViewerProps) {
       .subscribe();
 
     pdf2mdChannelRef.current = channel;
+
+    // Polling fallback: Realtime may miss updates; poll every 20 s as safety net.
+    pdf2mdPollRef.current = setInterval(async () => {
+      const job = await getPdf2mdJob(jobId);
+      if (job && (job.status === 'done' || job.status === 'error')) {
+        onJobFinished(job.status, job.result_url, job.error_msg);
+      }
+    }, 20_000);
+
+    // Hard timeout: give up after 15 minutes.
+    pdf2mdTimeoutRef.current = setTimeout(() => {
+      stopPdf2mdWatch();
+      setPdf2mdStatus('error');
+      setPdf2mdErrMsg('转换超时（15 分钟），请检查 GitHub Actions 工作流是否正常运行');
+      clearPdf2mdJobId(doc.id);
+    }, 15 * 60 * 1000);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onJobFinished, stopPdf2mdWatch]);
 
