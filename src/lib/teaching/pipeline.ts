@@ -57,6 +57,31 @@ async function chatComplete(
   });
 }
 
+/**
+ * Escape literal newlines / carriage returns / tabs that appear inside JSON
+ * string values (LLMs frequently emit bare newlines in multi-line Markdown
+ * fields, which makes JSON.parse throw a SyntaxError).
+ */
+function sanitizeJsonLiterals(s: string): string {
+  let result = '';
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) { escape = false; result += ch; continue; }
+    if (ch === '\\') { escape = true; result += ch; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString) {
+      // JSON strings must not contain literal control characters.
+      if (ch === '\n') { result += '\\n'; continue; }
+      if (ch === '\r') { result += '\\r'; continue; }
+      if (ch === '\t') { result += '\\t'; continue; }
+    }
+    result += ch;
+  }
+  return result;
+}
+
 /** Extract a JSON object from arbitrary LLM output, tolerating code fences. */
 function extractJson<T = unknown>(raw: string): T {
   let s = raw.trim();
@@ -88,7 +113,7 @@ function extractJson<T = unknown>(raw: string): T {
     else if (ch === closer) {
       depth--;
       if (depth === 0) {
-        const candidate = s.slice(start, i + 1);
+        const candidate = sanitizeJsonLiterals(s.slice(start, i + 1));
         const parsed = JSON.parse(candidate) as T;
         // If we got a bare array, wrap it in { modules: [...] } for the Generator caller
         if (Array.isArray(parsed)) return { modules: parsed } as unknown as T;
