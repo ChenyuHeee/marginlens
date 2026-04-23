@@ -136,9 +136,9 @@ function validateModule(m: unknown): TeachingModule | null {
       return o as unknown as TeachingModule;
 
     case 'section':
-      // Accept common field name aliases
+      // Accept common field name aliases; title is optional per schema
       if (!str(o.content)) o.content = o.body ?? o.text;
-      if (!str(o.title) || !str(o.content)) return null;
+      if (!str(o.content)) return null;
       return o as unknown as TeachingModule;
 
     case 'keypoints': {
@@ -153,7 +153,8 @@ function validateModule(m: unknown): TeachingModule | null {
 
     case 'definition':
       if (!str(o.definition)) o.definition = o.description ?? o.body ?? o.text;
-      if (!str(o.term) || !str(o.definition)) return null;
+      if (!str(o.term)) return null;
+      if (!str(o.definition)) o.definition = '（定义内容缺失）';
       return o as unknown as TeachingModule;
 
     case 'formula':
@@ -162,20 +163,24 @@ function validateModule(m: unknown): TeachingModule | null {
       return o as unknown as TeachingModule;
 
     case 'callout':
-      if (!str(o.body)) o.body = o.text ?? o.content;
+      if (!str(o.body)) o.body = o.text ?? o.content ?? o.description;
       if (!str(o.body)) return null;
       if (!VALID_CALLOUT_VARIANTS.has(o.variant as string)) o.variant = 'note';
       return o as unknown as TeachingModule;
 
     case 'qa':
       if (!str(o.answer)) o.answer = o.response ?? o.text ?? o.body;
+      if (!str(o.question)) o.question = o.title ?? o.prompt;
       if (!str(o.question) || !str(o.answer)) return null;
       return o as unknown as TeachingModule;
 
     case 'quiz': {
       if (!str(o.question) || !arr(o.options) || (o.options as unknown[]).length < 2) return null;
-      if (typeof o.correctIndex !== 'number') return null;
-      // Clamp correctIndex into valid range
+      if (typeof o.correctIndex !== 'number') {
+        // Try to find correctIndex from a "correct" field or default to 0
+        const ci = parseInt(String(o.correct ?? o.answer_index ?? 0), 10);
+        o.correctIndex = isNaN(ci) ? 0 : ci;
+      }
       o.correctIndex = Math.max(0, Math.min(o.correctIndex as number, (o.options as unknown[]).length - 1));
       return o as unknown as TeachingModule;
     }
@@ -190,8 +195,19 @@ function validateModule(m: unknown): TeachingModule | null {
       return o as unknown as TeachingModule;
     }
 
-    default:
-      return null; // Unknown type — discard
+    default: {
+      // Unknown type — try to salvage as callout
+      const body = o.content ?? o.body ?? o.text ?? o.description ?? o.summary;
+      if (str(body)) {
+        console.warn(`[Teaching] Unknown module type "${o.type}", salvaging as callout`);
+        o.type = 'callout';
+        o.body = body;
+        o.variant = 'note';
+        return o as unknown as TeachingModule;
+      }
+      console.warn(`[Teaching] Discarding unknown module type "${o.type}" with no salvageable content`);
+      return null;
+    }
   }
 }
 
