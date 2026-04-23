@@ -16,6 +16,36 @@ import { serializeAnnotationsToMarkdown } from '@/lib/annotations';
 import { createShare, buildShareUrl, type ShareMode, type AccessMode } from '@/lib/share';
 import { getAnnotationsByDocument } from '@/lib/db';
 
+/**
+ * Find all blob: image URLs in markdown and convert them to base64 data URLs.
+ * Blob URLs are ephemeral (tab-local) and must be inlined before they expire.
+ */
+async function resolveBlobUrls(markdown: string): Promise<string> {
+  const pattern = /!\[([^\]]*)\]\((blob:[^)\s]+)\)/g;
+  const matches = [...markdown.matchAll(pattern)];
+  if (matches.length === 0) return markdown;
+
+  let result = markdown;
+  await Promise.all(
+    matches.map(async ([full, alt, blobUrl]) => {
+      try {
+        const res = await fetch(blobUrl);
+        const blob = await res.blob();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        result = result.replace(full, `![${alt}](${base64})`);
+      } catch {
+        // blob already expired or inaccessible — leave as-is
+      }
+    }),
+  );
+  return result;
+}
+
 /** Extract the first markdown heading (# …) from content, null if none. */
 function extractFirstHeading(md: string): string | null {
   const match = md.match(/^#{1,6}\s+(.+)$/m);
@@ -56,6 +86,22 @@ export function MarkdownPanel({ content, documentId }: MarkdownPanelProps) {
     setDirty(false);
     setMode(content === NEW_NOTE_CONTENT ? 'edit' : 'preview');
   }, [documentId, content]);
+
+  // Resolve blob: image URLs → base64 data URLs as soon as they appear in content.
+  // Blob URLs are tab-local and ephemeral; this inlines them so preview, export, and
+  // persistence all work correctly.
+  useEffect(() => {
+    if (!editContent.includes('blob:')) return;
+    let cancelled = false;
+    resolveBlobUrls(editContent).then((resolved) => {
+      if (cancelled || resolved === editContent) return;
+      setEditContent(resolved);
+      setDirty(true);
+      scheduleAutosave(resolved);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editContent]);
 
   const handleSave = useCallback(async () => {
     await updateDocumentContent(documentId, editContent);

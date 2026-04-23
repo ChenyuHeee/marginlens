@@ -78,6 +78,7 @@ const markdownComponents: Components = {
  */
 function allowDataUrls(url: string): string {
   if (url.startsWith('data:')) return url;
+  if (url.startsWith('blob:')) return url;
   return defaultUrlTransform(url);
 }
 
